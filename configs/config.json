@@ -1,0 +1,184 @@
+{
+  "name": "Declarative pacman config",
+  "build_dir": "/var/tmp/nompac_rs",
+  "patch_dir": "/home/simonheise/git_repos/nompac_rs/patches",
+  "overlay_dir": "/home/simonheise/git_repos/nompac_rs/overlays",
+  "local_repo_dir": "/home/simonheise/git_repos/arch_localrepo/nomispaz",
+  "pacconfig": "$HOME/git_repos/nompac_rs/configs/pacman.conf",
+  "packagegroups": "all",
+  "snapshot": "2024_09_15",
+  "packages": [
+    {
+	"additionalprograms": [
+		"brave-bin",
+		"calibre",
+		"clipgrab",
+		"discord",
+		"keepassxc",
+		"libreoffice-fresh",
+		"obs-studio",
+		"thunderbird",
+		"asunder"
+	],
+	"amd": [
+		"amd-ucode"
+	],
+	"basics": [
+		"alacritty",
+		"archlinux-keyring",
+		"ark",
+		"base",
+		"base-devel",
+		"btrfs-progs",
+		"chromium",
+		"cpupower",
+		"devtools",
+		"dkms",
+		"dolphin",
+		"dracut",
+		"efibootmgr",
+		"egl-wayland",
+		"emacs",
+		"firefox",
+		"firewalld",
+		"fish",
+		"flatpak",
+		"git",
+		"gnome-disk-utility",
+		"gparted",
+		"grub",
+		"grub-btrfs",
+		"gvfs-mtp",
+		"gwenview",
+		"htop",
+		"kate",
+		"konsole",
+		"libliftoff",
+		"lib32-gnutls",
+		"lib32-vulkan-icd-loader",
+		"linux",
+		"linux-firmware",
+		"linux-headers",
+		"meld",
+		"mpv",
+		"neovim",
+		"okular",
+		"openssh",
+		"os-prober",
+		"pacman-contrib",
+		"ranger",
+		"ripgrep",
+		"screenfetch",
+		"smartmontools",
+		"snap-pac",
+		"snapper",
+		"sudo",
+		"testdisk",
+		"ttf-dejavu",
+		"ttf-font-awesome",
+		"veracrypt",
+		"vim",
+		"wget",
+		"xdg-user-dirs",
+		"xdg-utils",
+		"xf86-input-synaptics",
+		"xfsprogs"
+	],
+	"gaming": [
+		"gamemode",
+		"lutris",
+		"mangohud",
+		"steam",
+		"wine",
+		"wine-gecko",
+		"wine-mono",
+		"winetricks"
+	],
+	"networking": [
+		"blueman",
+		"bridge-utils",
+		"dnsmasq",
+		"iwd",
+		"networkmanager",
+		"wireless_tools",		
+		"wpa_supplicant"
+	],
+	"programming": [
+		"flake8",
+		"go",
+		"gopls",
+		"python-pip",
+		"python-pipx",
+		"python-lsp-server",
+		"python-pywlroots-debug",
+		"rust-analyzer",
+		"rustup",
+		"mdbook"
+	],
+	"ai": [
+		"ollama-cuda",
+		"cuda"
+	],
+	"security": [
+		"apparmor",
+		"chrony",
+		"clamav",
+		"lynis",
+		"rkhunter"
+	],
+	"virtualisation": [
+		"edk2-ovmf",
+		"qemu-desktop",
+		"virt-manager"
+	],
+	"windowmanagergeneral": [
+		"brightnessctl",
+		"dunst",
+		"gammastep",
+		"grim",
+		"inotify-tools",
+		"kanshi",
+		"network-manager-applet",
+		"pavucontrol",
+		"rofi",
+		"slurp",
+		"wl-clipboard",
+		"wlr-randr"
+	],
+	"nvidia": [
+		"lib32-nvidia-utils",
+		"nvidia-open-dkms",
+		"nvidia-prime",
+		"nvidia-settings",
+		"nvidia-utils"
+	],
+	"kdeplasma": [
+		"plasma-meta",
+		"plasma-workspace"
+
+	],
+	"sway": [
+		"python-dbus-next",
+		"python-i3ipc",
+		"sway",
+		"swaybg",
+		"waybar"
+	],
+	"tuxedo": [
+		"tuxedo-control-center-bin",
+		"tuxedo-drivers-dkms"
+	]
+    }	  
+  ],
+  "patches": [
+    {
+	"wlroots0.17": [
+		"nvidia.patch"
+	]
+    }
+  ],
+  "overlays": [
+	  "tuxedo-drivers-dkms",
+	  "tuxedo-control-center-bin"
+  ]
+}
