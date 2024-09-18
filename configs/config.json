@@ -3,7 +3,7 @@
   "build_dir": "/var/tmp/nompac_rs",
   "patch_dir": "/home/simonheise/git_repos/nompac_rs/patches",
   "overlay_dir": "/home/simonheise/git_repos/nompac_rs/overlays",
-  "local_repo_dir": "/home/simonheise/git_repos/arch_localrepo/nomispaz",
+  "local_repo": "/home/simonheise/git_repos/arch_localrepo/nomispaz/nomispaz.db",
   "pacconfig": "$HOME/git_repos/nompac_rs/configs/pacman.conf",
   "packagegroups": "all",
   "snapshot": "2024_09_15",

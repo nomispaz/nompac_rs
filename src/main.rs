@@ -1,6 +1,6 @@
 use std::fs::{read_to_string, File, write, copy};
 use std::io::{Write, BufReader, BufRead, Error, ErrorKind};
-use std::path;
+use std::path::Path;
 use serde_json;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -38,7 +38,7 @@ struct Config {
     build_dir: String,
     patch_dir: String,
     overlay_dir: String,
-    local_repo_dir: String,
+    local_repo: String,
     packages: Vec<HashMap<String, Vec<String>>>,
     patches: Vec<HashMap<String, Vec<String>>>,
     overlays: Vec<String>,
@@ -233,7 +233,7 @@ fn build_package(pkg_build_dir: &str)  {
 
 }
 
-fn update_repository(config: &Config, packagename: &str) -> Result<(), Box<dyn std::error::Error>> {    
+fn update_repository(config: &Config, local_repo_dir: &str, packagename: &str) -> Result<(), Box<dyn std::error::Error>> {    
 //! takes config struct and packagename and updates the repository so that a build package is
 //! copied to the local repository directory and added to the directory
     for entry_result in glob(&format!("{}/src/{}/**/*.txt", config.build_dir, packagename))? {
@@ -241,8 +241,8 @@ fn update_repository(config: &Config, packagename: &str) -> Result<(), Box<dyn s
         match entry_result {
             Ok(entry) => {
                 if let Some(file_name) = entry.as_path().file_name() {
-                    let _ = copy(entry.as_path(),&format!("{}/{}", config.local_repo_dir, file_name.to_string_lossy()));	
-                    let tmp_command = format!("repo-add {}/nomispaz.db.tar.zst {}/{}", config.local_repo_dir, config.local_repo_dir, file_name.to_string_lossy());
+                    let _ = copy(entry.as_path(),&format!("{}/{}", local_repo_dir, file_name.to_string_lossy()));	
+                    let tmp_command = format!("repo-add {}/nomispaz.db.tar.zst {}/{}", local_repo_dir, local_repo_dir, file_name.to_string_lossy());
 
                     let commands: Vec<&str> = vec![
                         &tmp_command
@@ -391,6 +391,19 @@ fn main() {
              }
         }
     }
+
+    let mut local_repo_dir: String = String::new();
+
+    if configs.local_repo.ends_with(".db") {
+        let check_directory = Path::new(&configs.local_repo);
+        if check_directory.is_file() {
+            local_repo_dir = configs.local_repo.rsplit_once("/").unwrap().0.to_string();
+        }
+    }
+    else {
+        local_repo_dir = "none".to_string();
+        println!("{}", "No db-file for local repository specified --> no local builds are possible.".red());
+    }
     
     // get list of explicitely installed packages
     let mut package_list_installed: Vec<String> = Vec::new();
@@ -427,90 +440,93 @@ fn main() {
     println!("{}","Used settings:".blue());
     println!("Used config file: {}", path_to_config);
     println!("Local build directory: {}", configs.build_dir);
-    println!("Local repository: {}", configs.local_repo_dir);
+    println!("Local repository: {}", configs.local_repo);
     println!("Patch directory: {}", configs.patch_dir);
     println!("Overlay directory: {}", configs.overlay_dir);
     println!("pacman.conf location: {}", pacconfig);
     println!("Snaphot date: {}_{}_{}", snapshot_year, snaphot_month, snapshot_day);
 
-    println!("{}", "\nBuilding patched upstream-packages".blue());
 
-    // create necessary directories
-    // build directory
-    let _ = std::fs::create_dir_all(format!("{}/src", configs.build_dir));
+    if local_repo_dir != "none".to_string() {
+        println!("{}", "\nBuilding patched upstream-packages".blue());
 
-    // apply patches, build new package and update local repository
-    for package in configs.patches[0].keys() {
+        // create necessary directories
+        // build directory
+        let _ = std::fs::create_dir_all(format!("{}/src", configs.build_dir));
 
-        let mut package_version_repo: String = String::new();
-        let mut package_version_installed: String = String::new();
+        // apply patches, build new package and update local repository
+        for package in configs.patches[0].keys() {
 
-        match get_current_version_from_repo(&package) {
-            Ok(version) => package_version_repo = version,
-            Err(e) => println!("{}", format!("Package version in repository of package {} couldn't be determined: {}", package, e).red())
-        }
-        match get_installed_version(&package) {
-            Ok(version) => package_version_installed = version,
-            Err(e) => println!("{}", format!("Package version of installed package {} couldn't be determined: {}", package, e).red())
-        }
-       
-        //only procede if the package was updated upstream
-        if package_version_installed.trim() != package_version_repo.trim() {
-            let _ = get_current_tarball_from_repo(&package, &package_version_repo, &format!("{}/{}-{}.tar.gz", configs.build_dir, package, package_version_repo));
+            let mut package_version_repo: String = String::new();
+            let mut package_version_installed: String = String::new();
 
-            println!("{}/{}-{}.tar.gz", &configs.build_dir, &package, &package_version_repo);
-            let _ = extract_tgz(&format!("{}/{}-{}.tar.gz", &configs.build_dir, &package, &package_version_repo), &format!("{}/src/", &configs.build_dir));
-
-            apply_patches(&configs, &configs.patches[0][package], &package, &package_version_repo);
-            
-            build_package(&format!("{}/src/{}-{}/", configs.build_dir, package, package_version_repo));
-
-            let _ =  update_repository(&configs, &package);
-
-            cleanup(&configs);
-        }
-        else {
-            println!("{}", format!("Package {} already up to date.", package).green());
-        }
-    }
-
-    // build packages from overlays
-    println!("{}", "\nBuilding packages from overlay".blue());
-
-    for package in &configs.overlays {
-        
-        let mut package_version_overlay: String = String::new();
-        let mut package_version_installed: String = String::new();
-
-        match get_installed_version(&package) {
-            Ok(version) => package_version_installed = version,
-            Err(e) => println!("{}", format!("Package version of installed package {} couldn't be determined: {}", package, e).red())
-        }
-       
-        match get_version_from_overlay(&configs.overlay_dir, &package) {
-            Ok(version) => package_version_overlay = version,
-            Err(e) => println!("{}", format!("Package version of package {} from overlay couldn't be determined: {}", package, e).red())
-        } 
-
-        if package_version_installed.trim() != package_version_overlay.trim() {
-            // copy necessary files from overlay to build directory
-            for entry in WalkDir::new(&format!("{}/{}", configs.overlay_dir, package)).into_iter().filter_map(|entry| entry.ok()) {
-                if entry.path().is_file() {
-                    let _ = std::fs::create_dir_all(format!("{}/src/{}/", configs.build_dir, package));
-                    let _ = copy(entry.path(), format!("{}/src/{}/{}", configs.build_dir, package, entry.file_name().to_str().unwrap()));
-                    println!("{}/src/{}/", configs.build_dir, package);
-                }
+            match get_current_version_from_repo(&package) {
+                Ok(version) => package_version_repo = version,
+                Err(e) => println!("{}", format!("Package version in repository of package {} couldn't be determined: {}", package, e).red())
             }
+            match get_installed_version(&package) {
+                Ok(version) => package_version_installed = version,
+                Err(e) => println!("{}", format!("Package version of installed package {} couldn't be determined: {}", package, e).red())
+            }
+           
+            //only procede if the package was updated upstream
+            if package_version_installed.trim() != package_version_repo.trim() {
+                let _ = get_current_tarball_from_repo(&package, &package_version_repo, &format!("{}/{}-{}.tar.gz", configs.build_dir, package, package_version_repo));
 
-            // build the package
-            build_package(&format!("{}/src/{}/", configs.build_dir, package));
+                println!("{}/{}-{}.tar.gz", &configs.build_dir, &package, &package_version_repo);
+                let _ = extract_tgz(&format!("{}/{}-{}.tar.gz", &configs.build_dir, &package, &package_version_repo), &format!("{}/src/", &configs.build_dir));
 
-            let _ = update_repository(&configs, &package);
+                apply_patches(&configs, &configs.patches[0][package], &package, &package_version_repo);
+                
+                build_package(&format!("{}/src/{}-{}/", configs.build_dir, package, package_version_repo));
 
-            cleanup(&configs);
+                let _ =  update_repository(&configs, &local_repo_dir, &package);
+
+                cleanup(&configs);
+            }
+            else {
+                println!("{}", format!("Package {} already up to date.", package).green());
+            }
         }
-        else {
-            println!("{}", format!("Package {} already up to date.", package).green());
+
+        // build packages from overlays
+        println!("{}", "\nBuilding packages from overlay".blue());
+
+        for package in &configs.overlays {
+            
+            let mut package_version_overlay: String = String::new();
+            let mut package_version_installed: String = String::new();
+
+            match get_installed_version(&package) {
+                Ok(version) => package_version_installed = version,
+                Err(e) => println!("{}", format!("Package version of installed package {} couldn't be determined: {}", package, e).red())
+            }
+           
+            match get_version_from_overlay(&configs.overlay_dir, &package) {
+                Ok(version) => package_version_overlay = version,
+                Err(e) => println!("{}", format!("Package version of package {} from overlay couldn't be determined: {}", package, e).red())
+            } 
+
+            if package_version_installed.trim() != package_version_overlay.trim() {
+                // copy necessary files from overlay to build directory
+                for entry in WalkDir::new(&format!("{}/{}", configs.overlay_dir, package)).into_iter().filter_map(|entry| entry.ok()) {
+                    if entry.path().is_file() {
+                        let _ = std::fs::create_dir_all(format!("{}/src/{}/", configs.build_dir, package));
+                        let _ = copy(entry.path(), format!("{}/src/{}/{}", configs.build_dir, package, entry.file_name().to_str().unwrap()));
+                        println!("{}/src/{}/", configs.build_dir, package);
+                    }
+                }
+
+                // build the package
+                build_package(&format!("{}/src/{}/", configs.build_dir, package));
+
+                let _ = update_repository(&configs, &local_repo_dir, &package);
+
+                cleanup(&configs);
+            }
+            else {
+                println!("{}", format!("Package {} already up to date.", package).green());
+            }
         }
     }
 
