@@ -30,6 +30,9 @@ struct Args {
     #[clap(long = "packagegroups", short = 'g', default_value = "none")]
     package_groups: String,
 
+    #[clap(long = "initiate", short = 'i', default_value = "no")]
+    initiate: String
+
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -44,6 +47,7 @@ struct Config {
     overlays: Vec<String>,
     packagegroups: String,
     pacconfig: String,
+    mirrorlist: String,
     snapshot: String
 }
 
@@ -296,6 +300,8 @@ e))
 
 fn modify_file(filename: &str, pattern: &str, replacement: &str) -> Result<(), Box<dyn std::error::Error>> {
 //! Replace a row in filename containing the pattern with replacement.
+//! Set append_if_not_exist to 1 if the replacement should be added to the end of the file if the
+//! pattern wasn't found
 //! The pattern needs to be given as regex
 //! be mindfull of special characters in the pattern, especially rust specifics
 //! $$      Match single dollar sign.
@@ -303,41 +309,170 @@ fn modify_file(filename: &str, pattern: &str, replacement: &str) -> Result<(), B
     let content = read_to_string(filename)?;
 
     let re = Regex::new(pattern)?;
-    let modified_content = re.replace_all(&content, replacement);
+    // check if the searched text exists and can be replaced:
+    let search_content = re.is_match(&content);
+    // try to replace the content
+    let mut modified_content = re.replace_all(&content, replacement).to_string(); 
 
-    write(filename, modified_content.to_string())?;
+    if !search_content {
+        // the content didn't exist --> it couldn't be replaced and needs to be appended to the
+        // file
+        modified_content = content;
+        modified_content.push_str(&format!("\n{}", &replacement));
+    }       
+
+    // write the modified string to the file
+    write(filename, modified_content)?;
 
     Ok(())
 }
 
-fn load_config_from_file(file_path: &str) -> Config {
+fn load_config_from_file(file_path: &str, args: &Args) -> Config {
     //! takes the path to the config file, parses the json files and returns a config struct
     let content = read_to_string(file_path).expect("Failed to read JSON configfile");
-    serde_json::from_str(&content).expect("Errors in the JSON-structure of the configfile")
+    let mut configs: Config = serde_json::from_str(&content).expect("Errors in the JSON-structure of the configfile");
+
+    // use pacconfig from args if available         
+    if args.pacconfig != "none" {
+        configs.pacconfig = args.pacconfig.clone();
+    }
+
+    configs.pacconfig = resolve_home(configs.pacconfig);
+
+    // if overlay-dir starts with ~ or $HOME, parse the directory
+    configs.overlay_dir = resolve_home(configs.overlay_dir);
+
+    // if patch-dir starts with ~ or $HOME, parse the directory    
+    configs.patch_dir = resolve_home(configs.patch_dir);
+
+    // if overlay-dir starts with ~ or $HOME, parse the directory   
+    configs.mirrorlist = resolve_home(configs.mirrorlist);
+
+    let mut local_repo_dir: String = String::new();
+
+    if configs.local_repo.ends_with(".db.tar.zst") {
+        configs.local_repo = resolve_home(configs.local_repo);
+
+        let check_file_exists = Path::new(&configs.local_repo);
+        if check_file_exists.is_file() {
+            local_repo_dir = configs.local_repo.rsplit_once("/").unwrap().0.to_string();
+        }
+        else {
+            // initiate, if anything other then no or n is defined
+            if args.initiate != "no" && args.initiate != "n" {
+                println!("Repository Db.tar.zst-file doesn't exist. It will be created");
+                initiate_repo(&configs);
+            }
+            else{
+                local_repo_dir = "none".to_string();
+                println!("{}", "Repository Db.tar.zst-file doesn't exist --> no local builds are possible. To create the file restart with -i yes".red());
+            }
+        }
+    }
+    else {
+        local_repo_dir = "none".to_string();
+        println!("{}", "No db.tar.zst-file for local repository specified --> no local builds are possible.".red());
+    }
+    
+    configs.local_repo = local_repo_dir;
+    
+    configs
+
+}
+
+fn resolve_home(old_path: String) -> String {
+    //if path of config-file contains ~ or $HOME, parse to the real home dir
+    let home_dir: String = home_dir().unwrap().display().to_string();
+    
+    let mut new_path: String = old_path;
+
+    if new_path.trim().starts_with("~") {
+        new_path = new_path.replace("~", &home_dir);
+    }
+
+    if new_path.trim().starts_with("$HOME") {
+        new_path = new_path.replace("$HOME", &home_dir);
+    }
+
+    new_path
+
+}
+
+fn initiate_repo(config: &Config) {
+    //! initiate nompac.
+    //! Takes config struct
+    //! Creates local repo according to the defined local_repo config option
+    let local_repo_file = config.local_repo.split("/").last().unwrap().to_string();
+    let _ = run_commands_piped(vec![&format!("repo-add {}", local_repo_file)]);
+}
+
+fn initiate_pacmanconf(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
+    //! initiate nompac.
+    //! Takes config struct
+    //! Updates pacman.conf with configured mirrorlist and adds local repo
+
+    // change mirrorlist to the one configured
+    let _ = modify_file(&config.pacconfig, "Include.*mirrorlist", &format!("Include = {}", &config.mirrorlist))?;
+
+    // add local repository
+    if config.local_repo != "none" {
+        let contents = read_to_string(&config.pacconfig)?;
+        let mut modified_content: String = String::new();
+        let mut already_inserted = false;
+        for line in contents.lines() {
+            // insert local repo before the first defined repository found
+            if !already_inserted & (line.ends_with("[core-testing]")
+                | line.ends_with("[core]")
+                | line.ends_with("[extra-testing]")
+                | line.ends_with("[extra]")
+                | line.ends_with("[multilib]")) {
+
+                    modified_content.push_str("[nomispaz]\n");
+                    modified_content.push_str("SigLevel = Optional TrustAll\n");
+                    modified_content.push_str(&format!("Server = file://{}\n\n", config.local_repo));
+                    modified_content.push_str(&format!("{}\n", line));
+                    already_inserted = true;
+            }
+            else {
+                modified_content.push_str(&format!("{}\n", line));
+            }
+        }
+
+        // Write new content to file
+        write(&config.pacconfig, &modified_content)?;
+
+    }
+    Ok(())
 }
 
 fn main() {
 
     // define and read command line arguments
     let args = Args::parse();
+   
+    let mut path_to_config = args.config.clone();
 
-    //if path of config-file contains ~ or $HOME, parse to the real home dir
-    let home_dir: String = home_dir().unwrap().display().to_string();
-    
-    let mut path_to_config = args.config;
-    //let mut path_to_config = format!("{}/.config/nompac_rs/config/config.json", home_dir);
-
-    if path_to_config.trim().starts_with("~") {
-        path_to_config = path_to_config.replace("~", &home_dir);
-    }
-
-    if path_to_config.trim().starts_with("~") {
-        path_to_config = path_to_config.replace("$HOME", &home_dir);
-    }
-
+    path_to_config = resolve_home(path_to_config);
+  
     // Path to JSON config file
-    let configs = load_config_from_file(&path_to_config);
-    
+    let configs = load_config_from_file(&path_to_config, &args);
+
+    // initiate pacman.conf if required
+    if args.initiate != "no" && args.initiate != "n" {
+        let _ = initiate_pacmanconf(&configs);
+    }
+        
+    // get list of explicitely installed packages
+    let mut package_list_installed: Vec<String> = Vec::new();
+
+    match run_commands_stdout(vec!["pacman -Qe | cut -d' ' -f 1"]) {
+        Ok(output) => {
+            let packages = String::from_utf8_lossy(&output.stdout).to_string();
+            package_list_installed = packages.split("\n").map(|s| s.to_string()).collect();
+        }
+        Err(e) => eprintln!("Error running commands: {}", e),
+    }
+
     let mut snapshot_year = "none";
     let mut snaphot_month = "none";
     let mut snapshot_day = "none";
@@ -346,40 +481,23 @@ fn main() {
 
     // if a snapshot was defined in the arguments, replace the one from the config file
     if args.snapshot == "none" {
-        date = configs.snapshot.split('_').map(|s| s.to_string()).collect();
-        if let [year, month, day] = &date[..] {
-            snapshot_year = year;
-            snaphot_month = month;
-            snapshot_day = day;
-        }
+        date = configs.snapshot.split('_').map(|s| s.to_string()).collect();   
     }
     else {
         date = args.snapshot.split('_').map(|s| s.to_string()).collect();
-        if let [year, month, day] = &date[..] {
+    }
+
+    if let [year, month, day] = &date[..] {
             snapshot_year = year;
             snaphot_month = month;
             snapshot_day = day;
         }
-    }
 
     // use package group from args if available
-    let mut package_groups: Vec<String> = Vec::new();
+    let mut package_groups: Vec<String> = args.package_groups.split(',').map(|s| s.to_string()).collect();
         
     if args.package_groups == "none" {
         package_groups = configs.packagegroups.split(',').map(|s| s.to_string()).collect();    }
-    else {
-        package_groups = args.package_groups.split(',').map(|s| s.to_string()).collect();
-    }
-
-    // use pacconfig from args if available
-    let mut pacconfig: String = String::new();
-        
-    if args.pacconfig == "none" {
-        pacconfig = configs.pacconfig.clone();    
-    }
-    else {
-        pacconfig = args.pacconfig.clone();
-    }
 
     // create package list of packages that should be installed explicitely       
     let mut package_list: Vec<String> = Vec::new();
@@ -392,30 +510,6 @@ fn main() {
         }
     }
 
-    let mut local_repo_dir: String = String::new();
-
-    if configs.local_repo.ends_with(".db") {
-        let check_directory = Path::new(&configs.local_repo);
-        if check_directory.is_file() {
-            local_repo_dir = configs.local_repo.rsplit_once("/").unwrap().0.to_string();
-        }
-    }
-    else {
-        local_repo_dir = "none".to_string();
-        println!("{}", "No db-file for local repository specified --> no local builds are possible.".red());
-    }
-    
-    // get list of explicitely installed packages
-    let mut package_list_installed: Vec<String> = Vec::new();
-
-    match run_commands_stdout(vec!["pacman -Qe | cut -d' ' -f 1"]) {
-        Ok(output) => {
-            let packages = String::from_utf8_lossy(&output.stdout).to_string();
-            package_list_installed = packages.split("\n").map(|s| s.to_string()).collect();
-        }
-        Err(e) => eprintln!("Error running commands: {}", e),
-    }
-   
     package_list.sort();
 
     // search for packages that are installed but not in package_list
@@ -443,11 +537,11 @@ fn main() {
     println!("Local repository: {}", configs.local_repo);
     println!("Patch directory: {}", configs.patch_dir);
     println!("Overlay directory: {}", configs.overlay_dir);
-    println!("pacman.conf location: {}", pacconfig);
+    println!("pacman.conf location: {}", configs.pacconfig);
     println!("Snaphot date: {}_{}_{}", snapshot_year, snaphot_month, snapshot_day);
 
 
-    if local_repo_dir != "none".to_string() {
+    if configs.local_repo != "none".to_string() {
         println!("{}", "\nBuilding patched upstream-packages".blue());
 
         // create necessary directories
@@ -480,7 +574,7 @@ fn main() {
                 
                 build_package(&format!("{}/src/{}-{}/", configs.build_dir, package, package_version_repo));
 
-                let _ =  update_repository(&configs, &local_repo_dir, &package);
+                let _ =  update_repository(&configs, &configs.local_repo, &package);
 
                 cleanup(&configs);
             }
@@ -509,7 +603,7 @@ fn main() {
 
             if package_version_installed.trim() != package_version_overlay.trim() {
                 // copy necessary files from overlay to build directory
-                for entry in WalkDir::new(&format!("{}/{}", configs.overlay_dir, package)).into_iter().filter_map(|entry| entry.ok()) {
+                for entry in WalkDir::new(&format!("{}/{}", &configs.overlay_dir, package)).into_iter().filter_map(|entry| entry.ok()) {
                     if entry.path().is_file() {
                         let _ = std::fs::create_dir_all(format!("{}/src/{}/", configs.build_dir, package));
                         let _ = copy(entry.path(), format!("{}/src/{}/{}", configs.build_dir, package, entry.file_name().to_str().unwrap()));
@@ -520,7 +614,7 @@ fn main() {
                 // build the package
                 build_package(&format!("{}/src/{}/", configs.build_dir, package));
 
-                let _ = update_repository(&configs, &local_repo_dir, &package);
+                let _ = update_repository(&configs, &configs.local_repo, &package);
 
                 cleanup(&configs);
             }
@@ -561,22 +655,20 @@ fn main() {
                 package_list.push_str(" ");
                 package_list.push_str(&package);
             }
-            let tmp_command = &format!("sudo pacman -Syu {} --config {}", package_list, pacconfig);
+            let tmp_command = &format!("sudo pacman -Syu {} --config {}", package_list, configs.pacconfig);
             command.push(tmp_command);
             println!("{}",format!("{}", package_list).blue());
-            //command.push("sudo DIFFPROG='nvim -d' pacdiff");
             let _ = run_commands_piped(command);
             run_commands(vec!["sudo DIFFPROG='nvim -d' pacdiff"]);
         }
         else {
             println!("{}", "Starting system update.\n".blue());
             let mut command: Vec<&str> = Vec::new();
-            let tmp_command = &format!("sudo pacman -Syu --config {}", pacconfig);
+            let tmp_command = &format!("sudo pacman -Syu --config {}", configs.pacconfig);
             command.push(tmp_command);
             command.push("sudo DIFFPROG='nvim -d' pacdiff");
             let _ = run_commands_piped(command);
             run_commands(vec!["sudo DIFFPROG='nvim -d' pacdiff"]);
         }
-        //println!("{}", format!("Execute --- sudo DIFFPROG='nvim -d' pacdiff --- after the update").red());
     }
 }
