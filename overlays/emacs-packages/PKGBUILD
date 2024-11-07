@@ -1,0 +1,117 @@
+pkgname=emacs-packages
+_pkgpart1=annalist
+_pkgpart1ver=1.0.1
+_pkgpart2=catppuccin
+_pkgpart2ver=0.1.0
+_pkgpart3=company-mode
+_pkgpart3ver=1.0.2
+_pkgpart4=compat
+_pkgpart4ver=30.0.0.0
+_pkgpart5=consult
+_pkgpart5ver=1.8
+_pkgpart6=dash
+_pkgpart6ver=2.19.1
+_pkgpart7=doom-modeline
+_pkgpart7ver=4.1.0
+_pkgpart8=evil-collection
+_pkgpart8ver=0.0.10
+_pkgpart9=evil
+_pkgpart9ver=1.14.2
+_pkgpart10=f
+_pkgpart10ver=0.21.0
+_pkgpart11=go-mode
+_pkgpart11ver=1.6.0
+_pkgpart12=goto-chg
+_pkgpart12ver=1.7.5
+_pkgpart13=marginalia
+_pkgpart13ver=1.7
+_pkgpart14=nerd-icons
+_pkgpart14ver=0.1.0
+_pkgpart15=orderless
+_pkgpart15ver=1.2
+_pkgpart16=rust-mode
+_pkgpart16ver=1.0.6
+_pkgpart17=s
+_pkgpart17ver=1.13.0
+_pkgpart18=shrink-path
+_pkgpart18ver=0.3.1
+_pkgpart19=spacemacs-theme
+_pkgpart19ver=0.3
+_pkgpart20=vertico
+_pkgpart20ver=1.9
+_pkgpart21=emacs-which-key
+_pkgpart21ver=3.6.0
+_pkgpart22=yasnippet
+_pkgpart22ver=0.14.0
+
+
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="Combined packages for my emacs config"
+license=("GPL3")
+arch=('x86_64')
+source=($_pkgpart1.tar.gz::https://github.com/noctuid/$_pkgpart1.el/archive/refs/tags/$_pkgpart1ver.tar.gz
+	$_pkgpart2.tar.gz::https://github.com/$_pkgpart2/emacs/archive/refs/tags/V$_pkgpart2ver.tar.gz
+	$_pkgpart3.tar.gz::https://github.com/$_pkgpart3/$_pkgpart3/archive/refs/tags/$_pkgpart3ver.tar.gz
+	$_pkgpart4.tar.gz::https://github.com/emacs-$_pkgpart4/$_pkgpart4/archive/refs/tags/$_pkgpart4ver.tar.gz
+	$_pkgpart5.tar.gz::https://github.com/minad/$_pkgpart5/archive/refs/tags/$_pkgpart5ver.tar.gz
+	$_pkgpart6.tar.gz::https://github.com/magnars/$_pkgpart6.el/archive/refs/tags/$_pkgpart6ver.tar.gz
+	$_pkgpart7.tar.gz::https://github.com/seagle0128/$_pkgpart7/archive/refs/tags/v$_pkgpart7ver.tar.gz
+	$_pkgpart8.tar.gz::https://github.com/emacs-evil/$_pkgpart8/archive/refs/tags/$_pkgpart8ver.tar.gz
+	$_pkgpart9.tar.gz::https://github.com/emacs-evil/$_pkgpart9/archive/refs/tags/$_pkgpart9ver.tar.gz
+	$_pkgpart10.tar.gz::https://github.com/rejeep/$_pkgpart10.el/archive/refs/tags/v$_pkgpart10ver.tar.gz
+	$_pkgpart11.tar.gz::https://github.com/dominikh/$_pkgpart11.el/archive/refs/tags/v$_pkgpart11ver.tar.gz
+	$_pkgpart12.tar.gz::https://github.com/emacs-evil/$_pkgpart12/archive/refs/tags/$_pkgpart12ver.tar.gz
+	$_pkgpart13.tar.gz::https://github.com/minad/$_pkgpart13/archive/refs/tags/$_pkgpart13ver.tar.gz
+	$_pkgpart14.tar.gz::https://github.com/rainstormstudio/$_pkgpart14.el/archive/refs/tags/$_pkgpart14ver.tar.gz
+	$_pkgpart15.tar.gz::https://github.com/oantolin/$_pkgpart15/archive/refs/tags/$_pkgpart15ver.tar.gz
+	$_pkgpart16.tar.gz::https://github.com/rust-lang/$_pkgpart16/archive/refs/tags/$_pkgpart16ver.tar.gz
+	$_pkgpart17.tar.gz::https://github.com/magnars/$_pkgpart17.el/archive/refs/tags/$_pkgpart17ver.tar.gz
+	$_pkgpart18.tar.gz::https://github.com/zbelial/$_pkgpart18.el/archive/refs/tags/v$_pkgpart18ver.tar.gz
+	$_pkgpart19.tar.gz::https://github.com/nashamri/$_pkgpart19/archive/refs/tags/$_pkgpart19ver.tar.gz
+	$_pkgpart20.tar.gz::https://github.com/minad/$_pkgpart20/archive/refs/tags/$_pkgpart20ver.tar.gz
+	$_pkgpart21.tar.gz::https://github.com/justbur/$_pkgpart21/archive/refs/tags/v$_pkgpart21ver.tar.gz
+	$_pkgpart22.tar.gz::https://github.com/joaotavora/$_pkgpart22/archive/refs/tags/$_pkgpart22ver.tar.gz
+)
+
+prepare() {
+    mkdir -p ${pkgname}
+    for i in $(seq 0 21);
+    do
+	tar xzvC ${pkgname} --strip-components=1 -f ${source[i]%%::*}
+    done
+      }
+
+build() {
+  cd ${pkgname}
+  emacs -q --no-splash -batch -L . -f batch-byte-compile *.el
+
+}
+
+package() {
+    cd ${pkgname}
+    mkdir -p "${pkgdir}"/usr/share/emacs/site-lisp/
+    install -m644 *.el{c,} "${pkgdir}"/usr/share/emacs/site-lisp/
+}
+sha256sums=('cd6d8fffaa717c5384b8be68d78eda96cc31f94405a368c1ad68ac683107084f'
+            'ef9db734493c57a0d8c8d28ae6a3674f09d675626ae8223d4577078e2226e74e'
+            '92b937636084dc910a3d04fac3e64d08df5444b34143ea903c8bd827fde8a8a6'
+            '6d13ebcfa76c60b49b27b2195f2311e924f072b25368adf8fcd33fb1e7328efb'
+            '4ddb8637e660ecdb3c7140710df330109ffbeb1431fb1d267c47c40edea0c4cd'
+            '37a8e562934ed4a6537db5f4fd83d7d472d0867f9c4749e8d21e6c5e4ae8bbae'
+            'e6fd730009059dc4c6f6969b84aae06a26dfd43e5f7ec17bf3e10008f1703b07'
+            'ae1d07bbf8388f28c72a8d668565643557cb8dbdb7bdacc6bdba323abfc2922d'
+            'ed7e9b034a48ac62e839ef97abb75c7590b149899fdad01f3d330a23b9d8132a'
+            '82c92d4df33a24a93d284cd6f0fa90313e34d07424c26fd6eae15aaea05fb1cb'
+            'd480f332bb0e286e41d1592bbce29a70637487788d1ae4ad36f6e7c75eb667d4'
+            '4d1740209a31014ecd5b75dfac9225f682289e8459a49b567923c284f7bf9179'
+            'b92278fe12dcff2d399f3d3edb96c9158fd7702cefb10c611b308d8954db1eea'
+            '8e18c286da7ce7ba7a0e289df351e6882fd09e6113fcbe37e5a89e8483527ce2'
+            'da7ce1a782fed4851a44c91cf965d90c6f5e69f592f3872d9fa275704229ad20'
+            '37ac9c0e05c915861af3996e037b18cc7d03f52d7fb508af7c404425ac95a461'
+            'a29b75866a423954c8b003d9f0d760a3153938336873843d9b0ec223e0243f3f'
+            '176453337ffd4a26b8dc58bf28b301f64a532d59f76f603a04029e2b1a1946e1'
+            '4dabc3c0aa2fbf73d257f48697cc6f83eb80e7ed969bd9a2b4bcf43b5d010ba5'
+            '35b40ff438d0a93a3c3058c3bf62130ac052d7adf17b64f8ba3ec14ebdd7fbad'
+            'b97a90c6db113d29b6404c0f29e240555d0b67c8cfc464fa04b05cdc38540e4f'
+            '08ebce82111e51371737f08b22271b63071ba8c6fa6ab98d4fbd573f1e9725da')
