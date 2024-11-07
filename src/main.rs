@@ -737,7 +737,7 @@ fn main() {
 
                 let _ = update_repository(&configs, &configs.local_repo, &package);
 
-                //cleanup(&configs);
+                cleanup(&configs);
             } else {
                 println!(
                     "{}",
