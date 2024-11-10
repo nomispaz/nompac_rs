@@ -779,7 +779,10 @@ fn main() {
 
         // only perform if packages have to be installed
         if packages_to_install.len() > 0 {
-            println!("{}", "Installing the following packages:".blue());
+            println!(
+                "{}",
+                "Installing the following packages and starting update:".blue()
+            );
             let mut command: Vec<&str> = Vec::new();
             let mut package_list: String = String::new();
             for package in packages_to_install {
@@ -791,9 +794,10 @@ fn main() {
                 package_list, configs.pacconfig
             );
             command.push(tmp_command);
+            command.push("sudo DIFFPROG='nvim -d' pacdiff");
             println!("{}", format!("{}", package_list).blue());
             let _ = run_commands_piped(command);
-            run_commands(vec!["sudo DIFFPROG='nvim -d' pacdiff"]);
+            // run_commands_piped(vec!["sudo DIFFPROG='nvim -d' pacdiff"]);
         } else {
             println!("{}", "Starting system update.\n".blue());
             let mut command: Vec<&str> = Vec::new();
@@ -801,7 +805,7 @@ fn main() {
             command.push(tmp_command);
             command.push("sudo DIFFPROG='nvim -d' pacdiff");
             let _ = run_commands_piped(command);
-            run_commands(vec!["sudo DIFFPROG='nvim -d' pacdiff"]);
+            // run_commands_piped(vec!["sudo DIFFPROG='nvim -d' pacdiff"]);
         }
     }
 }
