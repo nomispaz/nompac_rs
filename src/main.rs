@@ -14,6 +14,9 @@ use std::path::Path;
 use std::process::{Command, Output, Stdio};
 use tar::Archive;
 use walkdir::WalkDir;
+//async
+use std::sync::mpsc::{self, Sender};
+use std::thread;
 
 // Search for a pattern in a file and display the lines that contain it.
 #[derive(Parser)]
@@ -211,16 +214,33 @@ fn run_commands_stdout(commands: Vec<&str>) -> Result<Output, std::io::Error> {
     cmd.arg("-c").arg(joined_command).output()
 }
 
-fn run_commands(commands: Vec<&str>) {
-    //! takes vector of bash commands and executes the commands
+// Function to spawn the bash command and send each line of output over the channel
+fn run_command(
+    tx: Sender<String>,
+    commands: Vec<String>,
+) -> Result<(), Box<dyn std::error::Error>> {
     let joined_command = commands.join("; ");
-    let mut cmd = Command::new("bash");
-    cmd.arg("-c")
+    // Run the Bash command
+    let mut cmd = Command::new("bash")
+        .arg("-c")
         .arg(joined_command)
-        .spawn()
-        .expect("Error: Failed to run editor")
-        .wait()
-        .expect("Error: Editor returned a non-zero status");
+        .stdout(Stdio::piped()) // Capture the output
+        .spawn()?;
+
+    // Check if we can capture the stdout
+    if let Some(stdout) = cmd.stdout.take() {
+        let reader = BufReader::new(stdout);
+
+        // Send each line as it is available to the main thread
+        for line in reader.lines() {
+            let line = line.unwrap();
+            tx.send(line)?;
+        }
+    }
+
+    // Ensure the command completes
+    cmd.wait()?;
+    Ok(())
 }
 
 fn run_commands_piped(commands: Vec<&str>) -> Result<(), Error> {
@@ -488,6 +508,35 @@ fn initiate_pacmanconf(config: &Config) -> Result<(), Box<dyn std::error::Error>
     Ok(())
 }
 
+fn create_cmd_thread(command: Vec<String>, print: bool) {
+    //! wrapper to create a new thread to run bash script, print the results and return errors if necessary
+    //! takes a vector of commands and print as a boolean value (true --> print results of cmd)
+
+    // Create a channel to communicate between threads
+    let (tx, rx) = mpsc::channel();
+
+    // Spawn a thread to run the Bash command asynchronously
+    // clone of command necessary to print it on error
+    let command_result = thread::spawn(move || match run_command(tx, command.clone()) {
+        Ok(_) => print!(""),
+        Err(e) => eprintln!("Failed to run command {}: {:?}", command.join("; "), e),
+    });
+
+    // Main thread: receive and print each line as it arrives
+    // print only when print was set to true
+    if print {
+        for received_line in rx {
+            println!("{received_line}");
+        }
+    }
+
+    // make sure, that the thread is finished before continuing
+    match command_result.join() {
+        Ok(_) => println!("Main thread: The spawned thread has completed."),
+        Err(e) => eprintln!("Main thread: Failed to join thread: {:?}", e),
+    }
+}
+
 fn main() {
     // define and read command line arguments
     let args = Args::parse();
@@ -522,7 +571,7 @@ fn main() {
     let mut snaphot_month = "none";
     let mut snapshot_day = "none";
 
-    let mut date: Vec<String> = Vec::new();
+    let date: Vec<String>;
 
     // if a snapshot was defined in the arguments, replace the one from the config file
     if args.snapshot == "none" {
@@ -783,29 +832,32 @@ fn main() {
                 "{}",
                 "Installing the following packages and starting update:".blue()
             );
-            let mut command: Vec<&str> = Vec::new();
+            let mut command: Vec<String> = Vec::new();
             let mut package_list: String = String::new();
             for package in packages_to_install {
                 package_list.push_str(" ");
                 package_list.push_str(&package);
             }
-            let tmp_command = &format!(
+
+            command.push(format!(
                 "sudo pacman -Syu {} --config {}",
                 package_list, configs.pacconfig
-            );
-            command.push(tmp_command);
-            command.push("sudo DIFFPROG='nvim -d' pacdiff");
+            ));
+            command.push("sudo DIFFPROG='nvim -d' pacdiff".to_string());
             println!("{}", format!("{}", package_list).blue());
-            let _ = run_commands_piped(command);
-            // run_commands_piped(vec!["sudo DIFFPROG='nvim -d' pacdiff"]);
+
+            create_cmd_thread(command, true);
         } else {
             println!("{}", "Starting system update.\n".blue());
-            let mut command: Vec<&str> = Vec::new();
-            let tmp_command = &format!("sudo pacman -Syu --config {}", configs.pacconfig);
-            command.push(tmp_command);
-            command.push("sudo DIFFPROG='nvim -d' pacdiff");
-            let _ = run_commands_piped(command);
-            // run_commands_piped(vec!["sudo DIFFPROG='nvim -d' pacdiff"]);
+            let mut command: Vec<String> = Vec::new();
+
+            command.push(format!(
+                "sudo pacman -Syu --config {}",
+                configs.pacconfig.clone()
+            ));
+            command.push("sudo DIFFPROG='nvim -d' pacdiff".to_string());
+
+            create_cmd_thread(command, true);
         }
     }
 }

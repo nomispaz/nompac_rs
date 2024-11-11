@@ -6,7 +6,7 @@ license=("GPL3")
 arch=('x86_64')
 conflicts=('emacs-catppuccin-theme')
 provides=("emacs-catppuccin-theme=${pkgver}")
-source=($pkgname.tar.gz::https://github.com/noctuid/$_pkgpart1.el/archive/refs/tags/$pkgver.tar.gz)
+source=($pkgname.tar.gz::https://github.com/noctuid/$_pkgpart1.el/archive/refs/tags/$pkgver.tar.gz
 
 build() {
   cd ${pkgname}
