@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use serde_json;
 use std::collections::HashMap;
 use std::fs::{copy, read_to_string, write, File};
-use std::io::{BufRead, BufReader, Error, ErrorKind, Write};
+use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
 use std::process::{Command, Output, Stdio};
 use tar::Archive;
@@ -207,79 +207,18 @@ fn apply_patches(config: &Config, patches: &Vec<String>, packagename: &str, pack
     }
 }
 
-fn run_commands_stdout(commands: Vec<&str>) -> Result<Output, std::io::Error> {
-    //! takes vector of bash commands and executes the commands
-    let joined_command = commands.join("; ");
-    let mut cmd = Command::new("bash");
-    cmd.arg("-c").arg(joined_command).output()
-}
-
-// Function to spawn the bash command and send each line of output over the channel
-fn run_command(
-    tx: Sender<String>,
-    commands: Vec<String>,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let joined_command = commands.join("; ");
-    // Run the Bash command
-    let mut cmd = Command::new("bash")
-        .arg("-c")
-        .arg(joined_command)
-        .stdout(Stdio::piped()) // Capture the output
-        .spawn()?;
-
-    // Check if we can capture the stdout
-    if let Some(stdout) = cmd.stdout.take() {
-        let reader = BufReader::new(stdout);
-
-        // Send each line as it is available to the main thread
-        for line in reader.lines() {
-            let line = line.unwrap();
-            tx.send(line)?;
-        }
-    }
-
-    // Ensure the command completes
-    cmd.wait()?;
-    Ok(())
-}
-
-fn run_commands_piped(commands: Vec<&str>) -> Result<(), Error> {
-    //! takes vektor or bash commands and executes the commands while reading stdio as buffer and
-    //! prints stdout in realtime
-    let joined_command = commands.join("; ");
-
-    let cmd = Command::new("bash")
-        .arg("-c")
-        .arg(joined_command)
-        .stdout(Stdio::piped())
-        .spawn()?
-        .stdout
-        .ok_or_else(|| Error::new(ErrorKind::Other, "Could not capture standard output."))?;
-
-    let reader = BufReader::new(cmd);
-
-    reader
-        .lines()
-        .filter_map(|line| line.ok())
-        .for_each(|line| println!("{}", line));
-
-    Ok(())
-}
-
 fn build_package(pkg_build_dir: &str) {
-    //! takes the src-directory of the build files and executes a bash proces to
+    //! takes the src-directory of the build files and executes a bash process to
     //! build the package
-    let tmp_command = format!("pushd {}", pkg_build_dir);
-    println!("{}", tmp_command);
 
-    let commands = vec![
-        &tmp_command,
-        "updpkgsums",
-        "makepkg -cCsr --skippgpcheck",
-        "popd",
+    let commands: Vec<String> = vec![
+        format!("pushd {}", pkg_build_dir),
+        "updpkgsums".to_string(),
+        "makepkg -cCsr --skippgpcheck".to_string(),
+        "popd".to_string(),
     ];
 
-    let _ = run_commands_piped(commands);
+    create_cmd_thread(commands, true);
 }
 
 fn update_repository(
@@ -358,6 +297,7 @@ fn modify_file(
     filename: &str,
     pattern: &str,
     replacement: &str,
+    append_if_not_exist: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     //! Replace a row in filename containing the pattern with replacement.
     //! Set append_if_not_exist to 1 if the replacement should be added to the end of the file if the
@@ -374,7 +314,7 @@ fn modify_file(
     // try to replace the content
     let mut modified_content = re.replace_all(&content, replacement).to_string();
 
-    if !search_content {
+    if !search_content && append_if_not_exist {
         // the content didn't exist --> it couldn't be replaced and needs to be appended to the
         // file
         modified_content = content;
@@ -463,7 +403,7 @@ fn initiate_repo(config: &Config) {
     //! Takes config struct
     //! Creates local repo according to the defined local_repo config option
     let local_repo_file = config.local_repo.split("/").last().unwrap().to_string();
-    let _ = run_commands_piped(vec![&format!("repo-add {}", local_repo_file)]);
+    create_cmd_thread(vec![format!("repo-add {}", local_repo_file)], true);
 }
 
 fn initiate_pacmanconf(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
@@ -476,6 +416,7 @@ fn initiate_pacmanconf(config: &Config) -> Result<(), Box<dyn std::error::Error>
         &config.pacconfig,
         "Include.*mirrorlist",
         &format!("Include = {}", &config.mirrorlist),
+        false,
     )?;
 
     // add local repository
@@ -508,6 +449,42 @@ fn initiate_pacmanconf(config: &Config) -> Result<(), Box<dyn std::error::Error>
     Ok(())
 }
 
+fn run_commands_stdout(commands: Vec<&str>) -> Result<Output, std::io::Error> {
+    //! takes vector of bash commands and executes the commands
+    let joined_command = commands.join("; ");
+    let mut cmd = Command::new("bash");
+    cmd.arg("-c").arg(joined_command).output()
+}
+
+// Function to spawn the bash command and send each line of output over the channel
+fn run_command(
+    tx: Sender<String>,
+    commands: Vec<String>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let joined_command = commands.join("; ");
+    // Run the Bash command
+    let mut cmd = Command::new("bash")
+        .arg("-c")
+        .arg(joined_command)
+        .stdout(Stdio::piped()) // Capture the output
+        .spawn()?;
+
+    // Check if we can capture the stdout
+    if let Some(stdout) = cmd.stdout.take() {
+        let reader = BufReader::new(stdout);
+
+        // Send each line as it is available to the main thread
+        for line in reader.lines() {
+            let line = line.unwrap();
+            tx.send(line)?;
+        }
+    }
+
+    // Ensure the command completes
+    cmd.wait()?;
+    Ok(())
+}
+
 fn create_cmd_thread(command: Vec<String>, print: bool) {
     //! wrapper to create a new thread to run bash script, print the results and return errors if necessary
     //! takes a vector of commands and print as a boolean value (true --> print results of cmd)
@@ -537,69 +514,39 @@ fn create_cmd_thread(command: Vec<String>, print: bool) {
     }
 }
 
-fn main() {
-    // define and read command line arguments
-    let args = Args::parse();
-
-    let mut path_to_config = args.config.clone();
-
-    path_to_config = resolve_home(path_to_config);
-
-    // Path to JSON config file
-    let configs = load_config_from_file(&path_to_config, &args);
-
-    // initiate pacman.conf if required
-    if args.initiate != "no" && args.initiate != "n" {
-        let _ = initiate_pacmanconf(&configs);
-    }
+fn collect_package_lists(configs: &Config, args: Args) -> (Vec<String>, Vec<String>) {
+    //! returns lists for the packages to be removed or installed
 
     // get list of explicitely installed packages
-    let mut package_list_installed: Vec<String> = Vec::new();
+    let mut package_list_installed: Vec<String> = String::from_utf8_lossy(
+        &Command::new("bash")
+            .arg("-c")
+            .arg("pacman -Qe | cut -d' ' -f 1")
+            .output()
+            .map_err(|e| eprintln!("List of installed packages couldn't be collected: {e}"))
+            .unwrap()
+            .stdout,
+    )
+    .split("\n")
+    .map(|s| s.to_string())
+    .collect();
 
-    match run_commands_stdout(vec!["pacman -Qe | cut -d' ' -f 1"]) {
-        Ok(output) => {
-            let packages = String::from_utf8_lossy(&output.stdout).to_string();
-            package_list_installed = packages.split("\n").map(|s| s.to_string()).collect();
-            // remove the last element since the above split function returns an empty line after
-            // the last package
-            package_list_installed.pop();
-        }
-        Err(e) => eprintln!("Error running commands: {}", e),
-    }
+    // remove last item from list since the split function returns one additional empty row
+    package_list_installed.pop();
 
-    let mut snapshot_year = "none";
-    let mut snaphot_month = "none";
-    let mut snapshot_day = "none";
-
-    let date: Vec<String>;
-
-    // if a snapshot was defined in the arguments, replace the one from the config file
-    if args.snapshot == "none" {
-        date = configs.snapshot.split('_').map(|s| s.to_string()).collect();
+    // use package group from args if available, otherwise from config-file
+    let package_groups: Vec<String> = if args.package_groups != "none" {
+        args.package_groups
+            .split(',')
+            .map(|s| s.to_string())
+            .collect()
     } else {
-        date = args.snapshot.split('_').map(|s| s.to_string()).collect();
-    }
-
-    if let [year, month, day] = &date[..] {
-        snapshot_year = year;
-        snaphot_month = month;
-        snapshot_day = day;
-    }
-
-    // use package group from args if available
-    let mut package_groups: Vec<String> = args
-        .package_groups
-        .split(',')
-        .map(|s| s.to_string())
-        .collect();
-
-    if args.package_groups == "none" {
-        package_groups = configs
+        configs
             .packagegroups
             .split(',')
             .map(|s| s.to_string())
-            .collect();
-    }
+            .collect()
+    };
 
     // create package list of packages that should be installed explicitely
     let mut package_list: Vec<String> = Vec::new();
@@ -612,6 +559,7 @@ fn main() {
         }
     }
 
+    // sort list by package name
     package_list.sort();
 
     // search for packages that are installed but not in package_list
@@ -633,6 +581,36 @@ fn main() {
         }
     }
 
+    return (packages_to_remove, packages_to_install);
+}
+
+fn main() {
+    // define and read command line arguments
+    let args = Args::parse();
+
+    let mut path_to_config = args.config.clone();
+
+    path_to_config = resolve_home(path_to_config);
+
+    // Path to JSON config file
+    let configs = load_config_from_file(&path_to_config, &args);
+
+    // initiate pacman.conf if required
+    if args.initiate != "no" && args.initiate != "n" {
+        let _ = initiate_pacmanconf(&configs);
+    }
+
+    // get snapshot date
+    let date: Vec<String>;
+
+    // if a snapshot was defined in the arguments, replace the one from the config file
+    if args.snapshot == "none" {
+        date = configs.snapshot.split('_').map(|s| s.to_string()).collect();
+    } else {
+        date = args.snapshot.split('_').map(|s| s.to_string()).collect();
+    }
+
+    // all settings are collected --> print the result for the user
     println!("{}", "Used settings:".blue());
     println!("Used config file: {}", path_to_config);
     println!("Local build directory: {}", configs.build_dir);
@@ -640,11 +618,9 @@ fn main() {
     println!("Patch directory: {}", configs.patch_dir);
     println!("Overlay directory: {}", configs.overlay_dir);
     println!("pacman.conf location: {}", configs.pacconfig);
-    println!(
-        "Snaphot date: {}_{}_{}",
-        snapshot_year, snaphot_month, snapshot_day
-    );
+    println!("Snaphot date: {}_{}_{}", date[0], date[1], date[2]);
 
+    //building custom packages and overlays
     if configs.local_repo != "none".to_string() {
         println!("{}", "\nBuilding patched upstream-packages".blue());
 
@@ -797,16 +773,19 @@ fn main() {
     }
 
     // perform system update
-    if snapshot_year != "none" {
+    if date[0] != "none" {
         // update snapshot that will be used for the update
         let _ = modify_file(
             &format!("{}/mirrorlist", path_to_config.rsplit_once("/").unwrap().0),
             ".*archive.archlinux.org.*",
             &format!(
                 "Server = https://archive.archlinux.org/repos/{}/{}/{}/$$repo/os/$$arch",
-                snapshot_year, snaphot_month, snapshot_day
+                date[0], date[1], date[2]
             ),
+            true,
         );
+
+        let (packages_to_remove, packages_to_install) = collect_package_lists(&configs, args);
 
         // only perform if packages have to be removed
         if packages_to_remove.len() > 0 {
@@ -814,16 +793,16 @@ fn main() {
                 "{}",
                 "Removing the following packages since they don't exist in the config file:".red()
             );
-            let mut command: Vec<&str> = Vec::new();
+            let mut command: Vec<String> = Vec::new();
             let mut package_list: String = String::new();
             for package in packages_to_remove {
                 package_list.push_str(" ");
                 package_list.push_str(&package);
             }
-            let tmp_command = &format!("sudo pacman -Rsn {}", package_list);
-            command.push(tmp_command);
+            command.push(format!("sudo pacman -Rsn {}", package_list));
             println!("{}", format!("{}", package_list).red());
-            let _ = run_commands_piped(command);
+
+            create_cmd_thread(command, true);
         }
 
         // only perform if packages have to be installed
@@ -843,21 +822,26 @@ fn main() {
                 "sudo pacman -Syu {} --config {}",
                 package_list, configs.pacconfig
             ));
-            command.push("sudo DIFFPROG='nvim -d' pacdiff".to_string());
             println!("{}", format!("{}", package_list).blue());
-
             create_cmd_thread(command, true);
+
+            // after running the update, check for changed config files
+            let _ = Command::new("bash")
+                .arg("-c")
+                .arg("sudo DIFFPROG='nvim -d' pacdiff")
+                .status();
         } else {
             println!("{}", "Starting system update.\n".blue());
             let mut command: Vec<String> = Vec::new();
 
-            command.push(format!(
-                "sudo pacman -Syu --config {}",
-                configs.pacconfig.clone()
-            ));
-            command.push("sudo DIFFPROG='nvim -d' pacdiff".to_string());
-
+            command.push(format!("sudo pacman -Syu --config {}", configs.pacconfig));
             create_cmd_thread(command, true);
+
+            // after running the update, check for changed config files
+            let _ = Command::new("bash")
+                .arg("-c")
+                .arg("sudo DIFFPROG='nvim -d' pacdiff")
+                .status();
         }
     }
 }
