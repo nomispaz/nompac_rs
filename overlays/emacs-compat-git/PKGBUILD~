@@ -1,0 +1,21 @@
+pkgname=emacs-compat-git
+pkgver=afda4c68a4ebcc9104bf2a645848d7e92269f054
+pkgrel=1
+pkgdesc="Emacs compat package"
+license=("GPL-3")
+arch=('x86_64')
+conflicts=('emacs-compat')
+provides=("emacs-compat")
+source=("$pkgname::git+https://github.com/emacs-compat/compat.git")
+
+build() {
+  cd ${pkgname}
+  emacs -q --no-splash -batch -L . -f batch-byte-compile *.el
+}
+
+package() {
+    cd ${pkgname}
+    mkdir -p "${pkgdir}"/usr/share/emacs/site-lisp/
+    install -m644 *.el{c,} "${pkgdir}"/usr/share/emacs/site-lisp/
+}
+sha256sums=('SKIP')

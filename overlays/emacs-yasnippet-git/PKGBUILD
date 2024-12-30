@@ -1,0 +1,21 @@
+pkgname=emacs-yasnippet-git
+pkgver=fe1f4e0e96ce42d8668920335eb22c3c009dab3e
+pkgrel=1
+pkgdesc="Emacs yasnippet package"
+license=("GPL-3")
+arch=('x86_64')
+conflicts=('emacs-yasnippet')
+provides=("emacs-yasnippet")
+source=("$pkgname::git+https://github.com/joaotavora/yasnippet.git")
+
+build() {
+  cd ${pkgname}
+  emacs -q --no-splash -batch -L . -f batch-byte-compile *.el
+}
+
+package() {
+    cd ${pkgname}
+    mkdir -p "${pkgdir}"/usr/share/emacs/site-lisp/
+    install -m644 *.el{c,} "${pkgdir}"/usr/share/emacs/site-lisp/
+}
+sha256sums=('SKIP')

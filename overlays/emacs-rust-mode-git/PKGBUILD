@@ -1,0 +1,21 @@
+pkgname=emacs-rust-mode-git
+pkgver=c87f6f82bd484fb1c15009c8a3518ebb62942605
+pkgrel=1
+pkgdesc="Emacs rust-mode package"
+license=("MIT")
+arch=('x86_64')
+conflicts=('emacs-rust-mode')
+provides=("emacs-rust-mode")
+source=("$pkgname::git+https://github.com/rust-lang/rust-mode.git")
+
+build() {
+  cd ${pkgname}
+  emacs -q --no-splash -batch -L . -f batch-byte-compile *.el
+}
+
+package() {
+    cd ${pkgname}
+    mkdir -p "${pkgdir}"/usr/share/emacs/site-lisp/
+    install -m644 *.el{c,} "${pkgdir}"/usr/share/emacs/site-lisp/
+}
+sha256sums=('SKIP')

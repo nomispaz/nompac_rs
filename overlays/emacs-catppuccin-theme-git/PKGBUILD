@@ -1,0 +1,21 @@
+pkgname=emacs-catppuccin-theme-git
+pkgver=4441d5114fdcc2eb05186a974b4bbad7224e43b5
+pkgrel=1
+pkgdesc="Emacs catppuccin-theme package"
+license=("MIT")
+arch=('x86_64')
+conflicts=('emacs-catppuccin-theme')
+provides=("emacs-catppuccin-theme")
+source=("$pkgname::git+https://github.com/catppuccin/emacs.git")
+
+build() {
+  cd ${pkgname}
+  emacs -q --no-splash -batch -L . -f batch-byte-compile *.el
+}
+
+package() {
+    cd ${pkgname}
+    mkdir -p "${pkgdir}"/usr/share/emacs/site-lisp/
+    install -m644 *.el{c,} "${pkgdir}"/usr/share/emacs/site-lisp/
+}
+sha256sums=('SKIP')

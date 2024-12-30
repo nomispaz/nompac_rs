@@ -1,0 +1,21 @@
+pkgname=emacs-spacemacs-theme-git
+pkgver=398f73298c5ede1fffe8a7bc7efc40c2e89a754b
+pkgrel=1
+pkgdesc="Emacs spacemacs-theme package"
+license=("GPL-3")
+arch=('x86_64')
+conflicts=('emacs-spacemacs-theme')
+provides=("emacs-spacemacs-theme")
+source=("$pkgname::git+https://github.com/nashamri/spacemacs-theme.git")
+
+build() {
+  cd ${pkgname}
+  emacs -q --no-splash -batch -L . -f batch-byte-compile *.el
+}
+
+package() {
+    cd ${pkgname}
+    mkdir -p "${pkgdir}"/usr/share/emacs/site-lisp/
+    install -m644 *.el{c,} "${pkgdir}"/usr/share/emacs/site-lisp/
+}
+sha256sums=('SKIP')

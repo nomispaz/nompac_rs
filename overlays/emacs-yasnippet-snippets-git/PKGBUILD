@@ -1,0 +1,25 @@
+pkgname=emacs-yasnippet-snippets-git
+pkgver=23bcbcd11f567a2659ae413c62c82892eb50a3f1
+pkgrel=2
+pkgdesc="Emacs snippets for yasnippets package"
+license=("GPL-3")
+arch=('x86_64')
+conflicts=('emacs-yasnippet-snippets')
+provides=("emacs-yasnippet-snippets")
+depends=("emacs-yasnippet")
+source=("$pkgname::git+https://github.com/AndreaCrotti/yasnippet-snippets.git")
+
+build() {
+  cd ${pkgname}
+  emacs -q --no-splash -batch -L . -f batch-byte-compile *.el
+}
+
+package() {
+    cd ${pkgname}
+    mkdir -p "${pkgdir}"/usr/share/emacs/site-lisp/
+    mkdir -p "${pkgdir}"/usr/share/emacs/site-lisp/snippets/
+    install -m644 *.el{c,} "${pkgdir}"/usr/share/emacs/site-lisp/
+    cp -r snippets/* "${pkgdir}"/usr/share/emacs/site-lisp/snippets/
+    rm ${pkgdir}/usr/share/emacs/site-lisp/snippets/go-mode/default
+}
+sha256sums=('SKIP')

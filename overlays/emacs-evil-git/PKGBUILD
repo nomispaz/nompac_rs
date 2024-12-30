@@ -1,0 +1,22 @@
+pkgname=emacs-evil-git
+pkgver=72f556524b88e9d30dc7fc5b0dc32078c166fda7
+pkgrel=1
+pkgdesc="Emacs evil package"
+license=("GPL-3")
+arch=('x86_64')
+conflicts=('emacs-evil')
+provides=("emacs-evil")
+depends=("emacs-goto-chg")
+source=("$pkgname::git+https://github.com/emacs-evil/evil.git")
+
+build() {
+  cd ${pkgname}
+  emacs -q --no-splash -batch -L . -f batch-byte-compile *.el
+}
+
+package() {
+    cd ${pkgname}
+    mkdir -p "${pkgdir}"/usr/share/emacs/site-lisp/
+    install -m644 *.el{c,} "${pkgdir}"/usr/share/emacs/site-lisp/
+}
+sha256sums=('SKIP')

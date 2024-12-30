@@ -1,0 +1,21 @@
+pkgname=emacs-company-mode-git
+pkgver=9c273fc7c1a9dd69ccf508589211c4f8bd0e0765
+pkgrel=1
+pkgdesc="Emacs company package"
+license=("GPL-3")
+arch=('x86_64')
+conflicts=('emacs-company-mode')
+provides=("emacs-company-mode")
+source=("$pkgname::git+https://github.com/company-mode/company-mode.git")
+
+build() {
+  cd ${pkgname}
+  emacs -q --no-splash -batch -L . -f batch-byte-compile *.el
+}
+
+package() {
+    cd ${pkgname}
+    mkdir -p "${pkgdir}"/usr/share/emacs/site-lisp/
+    install -m644 *.el{c,} "${pkgdir}"/usr/share/emacs/site-lisp/
+}
+sha256sums=('SKIP')

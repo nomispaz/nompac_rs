@@ -35,7 +35,7 @@ struct Args {
     #[clap(
         long = "config",
         short = 'c',
-        default_value = "~/.config/nompac_rs/configs/config.json"
+        default_value = "~/.config/nompac/configs/config.json"
     )]
     config: String,
 
@@ -60,6 +60,7 @@ struct Config {
     pacconfig: String,
     mirrorlist: String,
     snapshot: String,
+    configs: Vec<HashMap<String, Vec<String>>>,
 }
 
 fn get_current_version_from_repo(package_name: &str) -> Result<String, Box<dyn std::error::Error>> {
@@ -225,11 +226,11 @@ fn update_repository(
     config: &Config,
     local_repo_dir: &str,
     packagename: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error>> {   
     //! takes config struct and packagename and updates the repository so that a build package is
     //! copied to the local repository directory and added to the directory
     for entry_result in glob(&format!(
-        "{}/src/{}/**/*.pkg.tar.zst",
+        "{}/src/{}*/**/*.pkg.tar.zst",
         config.build_dir, packagename
     ))? {
         match entry_result {
@@ -240,7 +241,7 @@ fn update_repository(
                         &format!("{}/{}", local_repo_dir, file_name.to_string_lossy()),
                     );
                     let tmp_command = format!(
-                        "repo-add {}/nomispaz.db.tar.zst {}/{}",
+                        "repo-add -R {}/nomispaz.db.tar.zst {}/{}",
                         local_repo_dir,
                         local_repo_dir,
                         file_name.to_string_lossy()
@@ -584,6 +585,10 @@ fn collect_package_lists(configs: &Config, args: Args) -> (Vec<String>, Vec<Stri
     return (packages_to_remove, packages_to_install);
 }
 
+fn perform_config_changes(configs: &Config) {
+    println!("{:?}", configs.configs.get(0).unwrap());
+}
+
 fn main() {
     // define and read command line arguments
     let args = Args::parse();
@@ -693,7 +698,7 @@ fn main() {
 
                 let _ = update_repository(&configs, &configs.local_repo, &package);
 
-                //cleanup(&configs);
+                cleanup(&configs);
             } else {
                 println!(
                     "{}",
@@ -761,6 +766,14 @@ fn main() {
                 build_package(&format!("{}/src/{}/", configs.build_dir, package));
 
                 let _ = update_repository(&configs, &configs.local_repo, &package);
+
+                //create_cmd_thread(
+                //    vec![format!(
+                //        "sudo pacman -Sy {} --config {}",
+                //        package, &configs.pacconfig
+                //    )],
+                //    true,
+                //);
 
                 cleanup(&configs);
             } else {
@@ -844,4 +857,9 @@ fn main() {
                 .status();
         }
     }
+
+    if !configs.configs.is_empty() {
+        perform_config_changes(&configs);
+    }
+
 }
