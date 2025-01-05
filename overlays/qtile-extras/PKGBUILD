@@ -1,0 +1,40 @@
+pkgname=qtile-extras
+pkgver=0.29.0
+pkgrel=2
+provides=("$pkgname")
+conflicts=("$pkgname")
+pkgdesc="Unofficial mods for qtile. Tagged release to match stable qtile releases."
+url="https://github.com/elparaguayo/qtile-extras.git"
+arch=("any")
+license=("MIT")
+depends=("python" "qtile")
+makedepends=(
+  "git"
+  "python-setuptools"
+  "python-setuptools-scm"
+  "python-wheel"
+  "python-build"
+  "python-installer"
+)
+optdepends=(
+  "python-requests: various widgets"
+  "python-iwlib: wifi icon widget"
+  "python-dbus-next: various widgets"
+)
+source=(git+https://github.com/elparaguayo/qtile-extras#tag=v$pkgver?signed)
+md5sums=('a2e7319eb9d5cfda35741c7f873d6aba')
+
+build() {
+  cd "$pkgname"
+  python -m build --wheel 
+}
+
+package()
+{
+  cd "$pkgname"
+  python -m installer --destdir="$pkgdir" dist/*.whl
+
+  install -vDm 644 LICENSE -t "$pkgdir/usr/share/licenses/$pkgname/"
+  install -vDm 644 CHANGELOG -t "$pkgdir/usr/share/doc/$pkgname/"
+}
+

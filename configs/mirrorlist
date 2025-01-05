@@ -1063,4 +1063,4 @@
 #Server = https://mirrors.nguyenhoang.cloud/archlinux/$repo/os/$arch
 
 # Arch linux archive
-Server = https://archive.archlinux.org/repos/2024/09/15/$repo/os/$arch
+Server = https://archive.archlinux.org/repos/2025/01/02/$repo/os/$arch

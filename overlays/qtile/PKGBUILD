@@ -1,0 +1,140 @@
+pkgname=qtile
+pkgver=0.26.0
+pkgrel=1
+pkgdesc="A full-featured, pure-Python tiling window manager"
+arch=(x86_64)
+url="http://www.qtile.org"
+_url="https://github.com/qtile/qtile"
+license=(MIT)
+depends=(
+  gdk-pixbuf2
+  glibc
+  libnotify
+  librsvg
+  pango
+  python
+  python-cairocffi
+  python-cffi
+  python-gobject
+  python-xcffib
+)
+makedepends=(
+  git
+  libpulse
+  python-build
+  python-installer
+  python-pywlroots
+  python-setuptools-scm
+  python-wheel
+  wlroots
+)
+checkdepends=(
+  graphviz
+  gtk3
+  imagemagick
+  lm_sensors
+  procps-ng
+  python-bowler
+  python-dbus-next
+  python-gobject
+  python-isort
+  python-libcst
+  python-pytest
+  python-xdg
+  xorg-server-xephyr
+  xorg-server-xvfb
+  xorg-xrandr
+  xorg-xwayland
+)
+optdepends=(
+  'alsa-utils: for volume widget'
+  'canto-daemon: for canto widget'
+  'cmus: for cmus widget'
+  'jupyter_console: for interaction with qtile via Jupyter'
+  'khal: for khal_calendar widget'
+  'libinput: for Wayland backend'
+  'libpulse: for pulse_volume and pulseaudio_ffi widget'
+  'lm_sensors: for sensors widget'
+  'moc: for moc widget'
+  'python-bowler: for migrating configuration files'
+  'python-dbus-next: for utils, notifications and several widgets'
+  'python-iwlib: for wlan widget'
+  'python-keyring: for imapwidget widget'
+  'python-libcst: for migrations'
+  'python-mpd2: mpd2widget widget'
+  'python-psutil: graph, net and memory widget'
+  'python-pywayland: for Wayland backend'
+  'python-pywlroots: for Wayland backend'
+  'python-setproctitle: change process name to qtile'
+  'python-xdg: launchbar widget'
+  'python-xkbcommon: for Wayland backend'
+  'xorg-xwayland: for XWayland support'
+)
+install=$pkgname.install
+source=("git+$_url?signed#tag=v$pkgver")
+sha512sums=('a57ad598203c1fbfe56130ceefb06d9223c99f4fc240fc05d2e3cf56b5f188fb6da27290d0b546f6c42ffcd541c14d398d80266d09f2f95a30e807c31066cbbc')
+b2sums=('721f7ce98fd526541939ededadba0666d9f7b7683c2f62f71039de5d83a9e79aedbca3a3531adcacb8ce5ff2e28d81b08169bbf71ba7e9ba9b7a2455a1a107a5')
+validpgpkeys=(
+  '3CCAB226289DE0160C61BDB418D18F1BC464DCA3' # Tycho Andersen <tycho@tycho.pizza>
+  '35D92E7CC7357A81173EA1C974F9FDD20984FBEC' # Matt Colligan <mcol@posteo.net>
+  'A6BAA1E17D2664ADB97B2C6F58A9AA7C86727DF7' # elParaguayo <elparaguayocode@gmail.com>
+)
+
+pkgver() {
+  cd $pkgname
+  git describe --tags | sed 's/\([^-]*-g\)/r\1/;s/-/./g;s/v//g'
+}
+
+prepare() {
+  # adjust group used for udev rules from sudo to wheel
+  sed 's/sudo/wheel/g' -i $pkgname/resources/99-$pkgname.rules
+}
+
+build() {
+  cd $pkgname
+  PYTHONPATH="$PWD" ./scripts/ffibuild -v
+  python -m build --wheel --no-isolation
+}
+
+check() {
+  local pytest_options=(
+    -vv
+    --backend x11
+    --backend wayland
+    # disable failing tests: https://github.com/qtile/qtile/issues/4762
+    --deselect test/backend/x11/test_window.py::test_urgent_hook_fire[wayland-2]
+    --deselect test/widgets/test_clock.py::test_clock_datetime_timezone
+    --deselect test/widgets/test_clock.py::test_clock_pytz_timezone
+    --deselect test/widgets/test_clock.py::test_clock_dateutil_timezone
+    --deselect test/widgets/test_clock.py::test_clock_change_timezones
+
+  )
+  local _site_packages=$(python -c "import site; print(site.getsitepackages()[0])")
+
+  cd $pkgname
+  # install to temporary location, as importlib is used
+  python -m installer --destdir=test_dir dist/*.whl
+  export LC_TYPE=en_US.UTF-8
+  export PYTHONPATH="test_dir/$_site_packages:$PYTHONPATH"
+  pytest "${pytest_options[@]}"
+}
+
+package() {
+  depends+=(
+    wlroots libwlroots.so
+  )
+  cd $pkgname
+  python -m installer --destdir="$pkgdir" dist/*.whl
+  # license
+  install -vDm 644 LICENSE -t "$pkgdir/usr/share/licenses/$pkgname/"
+  # config
+  install -vDm 644 libqtile/resources/default_config.py -t "$pkgdir/usr/share/doc/$pkgname/"
+  # desktop files
+  install -vDm 644 "resources/$pkgname.desktop" -t "$pkgdir/usr/share/xsessions/"
+  install -vDm 644 "resources/$pkgname-wayland.desktop" -t "$pkgdir/usr/share/wayland-sessions/"
+  # udev rules
+  install -vDm 644 resources/99-$pkgname.rules -t "$pkgdir/usr/lib/udev/rules.d/"
+  # docs
+  install -vDm 644 {CHANGELOG,README.rst} -t "$pkgdir/usr/share/doc/$pkgname/"
+}
+

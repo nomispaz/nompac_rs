@@ -6,7 +6,7 @@ use glob::glob;
 use regex::Regex;
 use reqwest;
 use serde::{Deserialize, Serialize};
-use serde_json;
+use serde_json::{self, Value};
 use std::collections::HashMap;
 use std::fs::{copy, read_to_string, write, File};
 use std::io::{BufRead, BufReader, Write};
@@ -53,14 +53,26 @@ struct Config {
     patch_dir: String,
     overlay_dir: String,
     local_repo: String,
-    packages: Vec<HashMap<String, Vec<String>>>,
+    packages: Vec<String>,
     patches: Vec<HashMap<String, Vec<String>>>,
     overlays: Vec<String>,
-    packagegroups: String,
     pacconfig: String,
     mirrorlist: String,
     snapshot: String,
-    configs: Vec<HashMap<String, Vec<String>>>,
+    configs: Vec<SystemConfigs>,
+    imports: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct SystemConfigs {
+    path: String,
+    config_entry: Vec<ConfigEntry>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct ConfigEntry {
+    orig: String,
+    changed: String,
 }
 
 fn get_current_version_from_repo(package_name: &str) -> Result<String, Box<dyn std::error::Error>> {
@@ -226,7 +238,7 @@ fn update_repository(
     config: &Config,
     local_repo_dir: &str,
     packagename: &str,
-) -> Result<(), Box<dyn std::error::Error>> {   
+) -> Result<(), Box<dyn std::error::Error>> {
     //! takes config struct and packagename and updates the repository so that a build package is
     //! copied to the local repository directory and added to the directory
     for entry_result in glob(&format!(
@@ -298,32 +310,78 @@ fn modify_file(
     filename: &str,
     pattern: &str,
     replacement: &str,
+    build_dir: &str,
     append_if_not_exist: bool,
+    sudo: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     //! Replace a row in filename containing the pattern with replacement.
     //! Set append_if_not_exist to 1 if the replacement should be added to the end of the file if the
-    //! pattern wasn't found
+    //! pattern wasn't found. Additionally, do nothing, if the search pattern already exists in the
+    //! file
     //! The pattern needs to be given as regex
     //! be mindfull of special characters in the pattern, especially rust specifics
     //! $$      Match single dollar sign.
 
-    let content = read_to_string(filename)?;
+    let mut content: String = "".to_string();
+
+    // if the file needs to be opened with sudo, it needs to be read with cat in linux
+    if !sudo {
+        content = read_to_string(filename)?;
+    } else {
+        let output = Command::new("sudo")
+            .arg("cat")
+            .arg(filename)
+            .output()
+            .expect("Failed to execute sudo command");
+
+        if output.status.success() {
+            content = String::from_utf8_lossy(&output.stdout)
+                .trim_end()
+                .to_string();
+        } else {
+            let error_message = String::from_utf8_lossy(&output.stderr);
+            eprintln!("Error reading file: {}", error_message);
+        }
+        // remove trailing empty lines from the file
+    }
 
     let re = Regex::new(pattern)?;
     // check if the searched text exists and can be replaced:
     let search_content = re.is_match(&content);
+    // check if the searched text already exists as a complete line
+    let mut replacement_already_exist = false;
+    for line in content.split("\n") {
+        if replacement_already_exist {
+            break;
+        }
+        let re = Regex::new(&format!("^{}$", replacement))?;
+        replacement_already_exist = re.is_match(&line);
+    }
+
     // try to replace the content
     let mut modified_content = re.replace_all(&content, replacement).to_string();
 
     if !search_content && append_if_not_exist {
         // the content didn't exist --> it couldn't be replaced and needs to be appended to the
-        // file
+        // file.
         modified_content = content;
         modified_content.push_str(&format!("\n{}", &replacement));
     }
 
-    // write the modified string to the file
-    write(filename, modified_content)?;
+    // write the modified string to the file. If the file needs sudo permissions, write with sudo
+    // only perform, if the replacement wasn't already in the file as a complete line
+    if !replacement_already_exist {
+        let tmp_file_split: Vec<&str> = filename.rsplitn(2, "/").collect();
+        let tmp_file = format!("{}/{}", build_dir, tmp_file_split.get(0).unwrap());
+        let _ = File::create(&tmp_file);
+        let _ = write(&tmp_file, modified_content);
+
+        if !sudo {
+            create_cmd_thread(vec![format!("cp {tmp_file} {filename}")], true);
+        } else {
+            create_cmd_thread(vec![format!("sudo cp {tmp_file} {filename}")], true);
+        }
+    }
 
     Ok(())
 }
@@ -417,6 +475,8 @@ fn initiate_pacmanconf(config: &Config) -> Result<(), Box<dyn std::error::Error>
         &config.pacconfig,
         "Include.*mirrorlist",
         &format!("Include = {}", &config.mirrorlist),
+        &config.build_dir,
+        false,
         false,
     )?;
 
@@ -515,7 +575,7 @@ fn create_cmd_thread(command: Vec<String>, print: bool) {
     }
 }
 
-fn collect_package_lists(configs: &Config, args: Args) -> (Vec<String>, Vec<String>) {
+fn collect_package_lists(configs: &Config, _args: Args) -> (Vec<String>, Vec<String>) {
     //! returns lists for the packages to be removed or installed
 
     // get list of explicitely installed packages
@@ -535,31 +595,8 @@ fn collect_package_lists(configs: &Config, args: Args) -> (Vec<String>, Vec<Stri
     // remove last item from list since the split function returns one additional empty row
     package_list_installed.pop();
 
-    // use package group from args if available, otherwise from config-file
-    let package_groups: Vec<String> = if args.package_groups != "none" {
-        args.package_groups
-            .split(',')
-            .map(|s| s.to_string())
-            .collect()
-    } else {
-        configs
-            .packagegroups
-            .split(',')
-            .map(|s| s.to_string())
-            .collect()
-    };
-
     // create package list of packages that should be installed explicitely
-    let mut package_list: Vec<String> = Vec::new();
-
-    for group in configs.packages[0].keys() {
-        if package_groups.contains(group) || package_groups == ["all"] {
-            for package in &configs.packages[0][group] {
-                package_list.push(package.to_string().to_lowercase());
-            }
-        }
-    }
-
+    let mut package_list = configs.packages.clone();
     // sort list by package name
     package_list.sort();
 
@@ -586,7 +623,74 @@ fn collect_package_lists(configs: &Config, args: Args) -> (Vec<String>, Vec<Stri
 }
 
 fn perform_config_changes(configs: &Config) {
-    println!("{:?}", configs.configs.get(0).unwrap());
+    // loop through all defined changes for config-files
+    for entry in &configs.configs {
+        let file_path_resolved = resolve_home(entry.path.clone());
+
+        // check if the file exists
+        if !Path::new(&file_path_resolved).exists() {
+            let _ = File::create(&file_path_resolved);
+            println!("File {file_path_resolved} created.");
+        }
+
+        // extract orig and changed value
+        let orig_value = &entry.config_entry.get(0).unwrap().orig;
+        let changed_value = &entry.config_entry.get(0).unwrap().changed;
+
+        let _ = modify_file(
+            &file_path_resolved,
+            orig_value,
+            changed_value,
+            &configs.build_dir,
+            true,
+            true,
+        );
+    }
+}
+
+fn collect_settings(file_path: &str) -> (Vec<String>, Vec<String>) {
+    //! collect the packages and overlays defined in the given file and return them
+
+    // first read the contents of the file into a json value (at this point it is not known, what fields exist in the json file)
+
+    // Read the file contents into a string
+    let contents =
+        read_to_string(file_path).expect(&format!("Couldn't read config file: {}", file_path));
+
+    // Parse the string into a `serde_json::Value`
+    let json_value: Value = serde_json::from_str(&contents)
+        .expect(&format!("Couldn't parse config file {}", file_path));
+
+    let mut packages: Vec<String> = vec![];
+    let mut overlays: Vec<String> = vec![];
+
+    // collect the packages
+    if let Some(config) = json_value.as_object() {
+        for (key, values) in config {
+            if key == "packages" {
+                packages = values
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|s| s.to_string().replace("\"", ""))
+                    .collect();
+            }
+        }
+    }
+    // collect the overlays
+    if let Some(config) = json_value.as_object() {
+        for (key, values) in config {
+            if key == "overlays" {
+                overlays = values
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|s| s.to_string().replace("\"", ""))
+                    .collect();
+            }
+        }
+    }
+    (packages, overlays)
 }
 
 fn main() {
@@ -597,8 +701,16 @@ fn main() {
 
     path_to_config = resolve_home(path_to_config);
 
-    // Path to JSON config file
-    let configs = load_config_from_file(&path_to_config, &args);
+    // Import basic settings from the config-file
+    let mut configs = load_config_from_file(&path_to_config, &args);
+
+    // collect settings from imported config-files defined in the original config file
+    for file_name in configs.imports.clone() {
+        let additional_settings: (Vec<String>, Vec<String>) =
+            collect_settings(&resolve_home(file_name));
+        configs.packages.extend(additional_settings.0);
+        configs.overlays.extend(additional_settings.1);
+    }
 
     // initiate pacman.conf if required
     if args.initiate != "no" && args.initiate != "n" {
@@ -795,7 +907,9 @@ fn main() {
                 "Server = https://archive.archlinux.org/repos/{}/{}/{}/$$repo/os/$$arch",
                 date[0], date[1], date[2]
             ),
+            &configs.build_dir,
             true,
+            false,
         );
 
         let (packages_to_remove, packages_to_install) = collect_package_lists(&configs, args);
@@ -859,7 +973,7 @@ fn main() {
     }
 
     if !configs.configs.is_empty() {
+        // TODO
         perform_config_changes(&configs);
     }
-
 }

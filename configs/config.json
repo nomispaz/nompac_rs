@@ -1,12 +1,17 @@
 {
+  "imports": [
+	  "/mnt/nvme2/git_repos/dotfiles/nompac/configs/modules/basic_programs.json",
+	  "/mnt/nvme2/git_repos/dotfiles/nompac/configs/modules/rest.json"
+  ],
   "name": "Declarative pacman config",
-  "build_dir": "/var/tmp/nompac_rs",
-  "patch_dir": "/home/simonheise/git_repos/nompac_rs/patches",
-  "overlay_dir": "/home/simonheise/git_repos/nompac_rs/overlays",
-  "local_repo": "/home/simonheise/git_repos/arch_localrepo/nomispaz/nomispaz.db",
-  "pacconfig": "$HOME/git_repos/nompac_rs/configs/pacman.conf",
+  "build_dir": "/var/tmp/nompac",
+  "patch_dir": "$HOME/git_repos/arch_localrepo/patches",
+  "overlay_dir": "$HOME/git_repos/arch_localrepo/overlays",
+  "local_repo": "$HOME/git_repos/arch_localrepo/nomispaz/nomispaz.db.tar.zst",
+  "pacconfig": "$HOME/.config/nompac/configs/pacman.conf",
+  "mirrorlist": "$HOME/.config/nompac/configs/mirrorlist",
   "packagegroups": "all",
-  "snapshot": "2024_09_15",
+  "snapshot": "2024_12_21",
   "packages": [
     {
 	"additionalprograms": [
@@ -19,6 +24,12 @@
 		"obs-studio",
 		"thunderbird",
 		"asunder"
+	],
+	"buildingdependencies": [
+		"python-tqdm",
+		"meson",
+		"ninja",
+		"wayland-protocols"
 	],
 	"amd": [
 		"amd-ucode"
@@ -38,7 +49,6 @@
 		"dracut",
 		"efibootmgr",
 		"egl-wayland",
-		"emacs",
 		"firefox",
 		"firewalld",
 		"fish",
@@ -53,6 +63,7 @@
 		"htop",
 		"kate",
 		"konsole",
+		"less",
 		"libliftoff",
 		"lib32-gnutls",
 		"lib32-vulkan-icd-loader",
@@ -67,6 +78,7 @@
 		"os-prober",
 		"pacman-contrib",
 		"ranger",
+		"rclone",
 		"ripgrep",
 		"screenfetch",
 		"smartmontools",
@@ -83,6 +95,24 @@
 		"xdg-utils",
 		"xf86-input-synaptics",
 		"xfsprogs"
+	],
+	"docker": [
+		"docker",
+		"nvidia-container-toolkit"
+	],
+	"emacs": [
+		"emacs",
+		"emacs-catppuccin-theme-git",
+		"emacs-spacemacs-theme-git",
+		"emacs-company-mode-git",
+		"emacs-compat-git",
+		"emacs-consult-git",
+		"emacs-go-mode-git",
+		"emacs-rust-mode-git",
+		"emacs-goto-chg-git",
+		"emacs-evil-git",
+		"emacs-yasnippet-git",
+		"emacs-yasnippet-snippets-git"
 	],
 	"gaming": [
 		"gamemode",
@@ -107,17 +137,15 @@
 		"flake8",
 		"go",
 		"gopls",
+		"delve",
 		"python-pip",
 		"python-pipx",
 		"python-lsp-server",
 		"python-pywlroots-debug",
 		"rust-analyzer",
 		"rustup",
-		"mdbook"
-	],
-	"ai": [
-		"ollama-cuda",
-		"cuda"
+		"mdbook",
+		"code"
 	],
 	"security": [
 		"apparmor",
@@ -150,7 +178,8 @@
 		"nvidia-open-dkms",
 		"nvidia-prime",
 		"nvidia-settings",
-		"nvidia-utils"
+		"nvidia-utils",
+		"cuda"
 	],
 	"kdeplasma": [
 		"plasma-meta",
@@ -164,6 +193,11 @@
 		"swaybg",
 		"waybar"
 	],
+	"qtile": [
+		"qtile",
+		"python-pywlroots",
+		"qtile-extras"
+	],
 	"tuxedo": [
 		"tuxedo-control-center-bin",
 		"tuxedo-drivers-dkms"
@@ -171,14 +205,40 @@
     }	  
   ],
   "patches": [
-    {
-	"wlroots0.17": [
+	  {
+	"wlroots": [
 		"nvidia.patch"
 	]
     }
   ],
   "overlays": [
 	  "tuxedo-drivers-dkms",
-	  "tuxedo-control-center-bin"
+	  "tuxedo-control-center-bin",
+	  "emacs-catppuccin-theme-git",
+  	  "emacs-spacemacs-theme-git",
+  	  "emacs-company-mode-git",
+	  "emacs-compat-git",
+	  "emacs-consult-git",
+	  "emacs-go-mode-git",
+	  "emacs-rust-mode-git",
+	  "emacs-goto-chg-git",
+	  "emacs-evil-git",
+	  "emacs-yasnippet-git",
+	  "emacs-yasnippet-snippets-git",
+	  "qtile-extras"
+  ],
+  "configs": [
+	  {
+		"path": ["~/test.txt"],
+		"config_entry": [
+			"123"
+		]
+	  },
+	  {
+		  "path": ["~/test2.txt"],
+		  "config_entry": [
+			  "124"
+		  ]
+	  }
   ]
 }
