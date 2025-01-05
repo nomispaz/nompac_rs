@@ -1,0 +1,18 @@
+After trying out several other distributions apart from Arch linux (e.g. Tumbleweed, NixOS, gentoo), I always came back to Arch since every other distribution didn’t feel perfect
+
+    tumbleweed had regular kernel panics with my hardware configuration that I didn’t get on any other distribution. Other than that, it is a great distribution.
+    gentoo has a very nice way to allow patching of packages from the official repo or integrate my own repository. But ultimately, the required maintenance time to change use flags and recompile a large part of the system (even though I used binary packages whenever possible) was not worth it any more for me. It is a great distribution that never broke for me but I don’t want to invest the time any more.
+    NixOS was great at first with declarative package management where I could pin a version with the help of flakes so that I don’t have to update the system whenever I wanted to install a new package. In addition, the system is automatically documented within the config files so that it can be easily reconstructed exactly the same on several installs. But unfortunately, the system gets in your way if you try to build packages not in the official repositories since NixOS doesn’t use the linux FHS that other ditributions use. I e.g. couldn’t get tuxedo-control-center to work at all and it was very difficult to adjust a nix-file for tuxedo-drivers. both is very simple in Arch, gentoo and tumbleweed.
+
+Going back to Arch from every distribution, what was missing for me was the ability to easily patch packages and integrate my own repository seamlessly into the update process. in addition, I missed the declarative nature of NixOS.
+
+Therefore I decided to write nompac, a wraper around package manager(s) (currently pacman but zypper is planned). This wrapper allows to integrate PKGBUILDs for a personal repository and patches for packages from the official repositories like gentoo and NixOS does. Additionally, the packages can be handled in a declaritive way. Everything is defined in one JSON-config file.
+
+Features in detail:
+
+    If patches are defined in nompac, it checks the official repository for new versions, downloads the PKGBUILD file and all required files, adds the patch to the PKGBUILD file, builds the package and automatically integrates it into the personal repository.
+    If the user defined a new revision or version for personal packages, nompac automatically builds these packages.
+    It is possible like in NixOS to use a specific snapshot of the arch linux repository by specifying to date of the snapshot.
+    Like in NixOS, the packages that are installed explicitely can be defined in the config file. When nompac is run, the list of packages is automatically compared to the installed packages and changes (new installs or removals) are applied to the system.
+
+
