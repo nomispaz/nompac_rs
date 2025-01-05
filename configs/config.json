@@ -1,244 +1,51 @@
 {
-  "imports": [
-	  "/mnt/nvme2/git_repos/dotfiles/nompac/configs/modules/basic_programs.json",
-	  "/mnt/nvme2/git_repos/dotfiles/nompac/configs/modules/rest.json"
-  ],
   "name": "Declarative pacman config",
-  "build_dir": "/var/tmp/nompac",
-  "patch_dir": "$HOME/git_repos/arch_localrepo/patches",
-  "overlay_dir": "$HOME/git_repos/arch_localrepo/overlays",
-  "local_repo": "$HOME/git_repos/arch_localrepo/nomispaz/nomispaz.db.tar.zst",
+  "build_dir": "/var/tmp/nompac_rs",
+  "patch_dir": "/mnt/nvme2/git_repos/nompac_rs/patches",
+  "overlay_dir": "/mnt/nvme2/git_repos/nompac_rs/overlays",
+  "local_repo": "/mnt/nvme2/git_repos/arch_localrepo/nomispaz/nomispaz.db.tar.zst",
   "pacconfig": "$HOME/.config/nompac/configs/pacman.conf",
   "mirrorlist": "$HOME/.config/nompac/configs/mirrorlist",
-  "packagegroups": "all",
   "snapshot": "2024_12_21",
-  "packages": [
-    {
-	"additionalprograms": [
-		"brave-bin",
-		"calibre",
-		"clipgrab",
-		"discord",
-		"keepassxc",
-		"libreoffice-fresh",
-		"obs-studio",
-		"thunderbird",
-		"asunder"
-	],
-	"buildingdependencies": [
-		"python-tqdm",
-		"meson",
-		"ninja",
-		"wayland-protocols"
-	],
-	"amd": [
-		"amd-ucode"
-	],
-	"basics": [
-		"alacritty",
-		"archlinux-keyring",
-		"ark",
-		"base",
-		"base-devel",
-		"btrfs-progs",
-		"chromium",
-		"cpupower",
-		"devtools",
-		"dkms",
-		"dolphin",
-		"dracut",
-		"efibootmgr",
-		"egl-wayland",
-		"firefox",
-		"firewalld",
-		"fish",
-		"flatpak",
-		"git",
-		"gnome-disk-utility",
-		"gparted",
-		"grub",
-		"grub-btrfs",
-		"gvfs-mtp",
-		"gwenview",
-		"htop",
-		"kate",
-		"konsole",
-		"less",
-		"libliftoff",
-		"lib32-gnutls",
-		"lib32-vulkan-icd-loader",
-		"linux",
-		"linux-firmware",
-		"linux-headers",
-		"meld",
-		"mpv",
-		"neovim",
-		"okular",
-		"openssh",
-		"os-prober",
-		"pacman-contrib",
-		"ranger",
-		"rclone",
-		"ripgrep",
-		"screenfetch",
-		"smartmontools",
-		"snap-pac",
-		"snapper",
-		"sudo",
-		"testdisk",
-		"ttf-dejavu",
-		"ttf-font-awesome",
-		"veracrypt",
-		"vim",
-		"wget",
-		"xdg-user-dirs",
-		"xdg-utils",
-		"xf86-input-synaptics",
-		"xfsprogs"
-	],
-	"docker": [
-		"docker",
-		"nvidia-container-toolkit"
-	],
-	"emacs": [
-		"emacs",
-		"emacs-catppuccin-theme-git",
-		"emacs-spacemacs-theme-git",
-		"emacs-company-mode-git",
-		"emacs-compat-git",
-		"emacs-consult-git",
-		"emacs-go-mode-git",
-		"emacs-rust-mode-git",
-		"emacs-goto-chg-git",
-		"emacs-evil-git",
-		"emacs-yasnippet-git",
-		"emacs-yasnippet-snippets-git"
-	],
-	"gaming": [
-		"gamemode",
-		"lutris",
-		"mangohud",
-		"steam",
-		"wine",
-		"wine-gecko",
-		"wine-mono",
-		"winetricks"
-	],
-	"networking": [
-		"blueman",
-		"bridge-utils",
-		"dnsmasq",
-		"iwd",
-		"networkmanager",
-		"wireless_tools",		
-		"wpa_supplicant"
-	],
-	"programming": [
-		"flake8",
-		"go",
-		"gopls",
-		"delve",
-		"python-pip",
-		"python-pipx",
-		"python-lsp-server",
-		"python-pywlroots-debug",
-		"rust-analyzer",
-		"rustup",
-		"mdbook",
-		"code"
-	],
-	"security": [
-		"apparmor",
-		"chrony",
-		"clamav",
-		"lynis",
-		"rkhunter"
-	],
-	"virtualisation": [
-		"edk2-ovmf",
-		"qemu-desktop",
-		"virt-manager"
-	],
-	"windowmanagergeneral": [
-		"brightnessctl",
-		"dunst",
-		"gammastep",
-		"grim",
-		"inotify-tools",
-		"kanshi",
-		"network-manager-applet",
-		"pavucontrol",
-		"rofi",
-		"slurp",
-		"wl-clipboard",
-		"wlr-randr"
-	],
-	"nvidia": [
-		"lib32-nvidia-utils",
-		"nvidia-open-dkms",
-		"nvidia-prime",
-		"nvidia-settings",
-		"nvidia-utils",
-		"cuda"
-	],
-	"kdeplasma": [
-		"plasma-meta",
-		"plasma-workspace"
-
-	],
-	"sway": [
-		"python-dbus-next",
-		"python-i3ipc",
-		"sway",
-		"swaybg",
-		"waybar"
-	],
-	"qtile": [
-		"qtile",
-		"python-pywlroots",
-		"qtile-extras"
-	],
-	"tuxedo": [
-		"tuxedo-control-center-bin",
-		"tuxedo-drivers-dkms"
-	]
-    }	  
+  "imports": [
+	  "$HOME/.config/nompac/configs/modules/basic_programs.json",
+	  "$HOME/.config/nompac/configs/modules/amd.json",
+	  "$HOME/.config/nompac/configs/modules/docker.json",
+	  "$HOME/.config/nompac/configs/modules/additional_programs.json",
+	  "$HOME/.config/nompac/configs/modules/building_dependencies.json",
+	  "$HOME/.config/nompac/configs/modules/emacs.json",
+	  "$HOME/.config/nompac/configs/modules/gaming.json",
+	  "$HOME/.config/nompac/configs/modules/networking.json",
+	  "$HOME/.config/nompac/configs/modules/programming.json",
+	  "$HOME/.config/nompac/configs/modules/security.json",
+	  "$HOME/.config/nompac/configs/modules/virtualisation.json",
+	  "$HOME/.config/nompac/configs/modules/windowmanager_tools.json",
+	  "$HOME/.config/nompac/configs/modules/nvidia.json",
+	  "$HOME/.config/nompac/configs/modules/kde.json",
+	  "$HOME/.config/nompac/configs/modules/sway.json",
+	  "$HOME/.config/nompac/configs/modules/qtile.json",
+	  "$HOME/.config/nompac/configs/modules/tuxedo.json"
   ],
-  "patches": [
-	  {
-	"wlroots": [
-		"nvidia.patch"
-	]
-    }
+  "packages": [
   ],
   "overlays": [
-	  "tuxedo-drivers-dkms",
-	  "tuxedo-control-center-bin",
-	  "emacs-catppuccin-theme-git",
-  	  "emacs-spacemacs-theme-git",
-  	  "emacs-company-mode-git",
-	  "emacs-compat-git",
-	  "emacs-consult-git",
-	  "emacs-go-mode-git",
-	  "emacs-rust-mode-git",
-	  "emacs-goto-chg-git",
-	  "emacs-evil-git",
-	  "emacs-yasnippet-git",
-	  "emacs-yasnippet-snippets-git",
-	  "qtile-extras"
+  ],
+  "patches": [
+    {
+      "wlroots": [
+		"nvidia.patch"
+      ]
+    }
   ],
   "configs": [
 	  {
-		"path": ["~/test.txt"],
+		"path": "/etc/libvirt/qemu.conf",
 		"config_entry": [
-			"123"
+			{
+			"orig": "# user = \\\"qemu\\\"",
+		  	"changed": "user = \"simonheise\""
+			}
 		]
-	  },
-	  {
-		  "path": ["~/test2.txt"],
-		  "config_entry": [
-			  "124"
-		  ]
 	  }
   ]
 }

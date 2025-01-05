@@ -1,0 +1,12 @@
+{
+"packages": [
+	"qtile",
+	"python-pywlroots",
+	"qtile-extras"
+],
+"overlays":
+[
+	"qtile-extras"
+
+]
+}

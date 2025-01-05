@@ -1,0 +1,12 @@
+{
+"packages": [
+	"gamemode",
+	"lutris",
+	"mangohud",
+	"steam",
+	"wine",
+	"wine-gecko",
+	"wine-mono",
+	"winetricks"
+]
+}

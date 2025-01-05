@@ -1,0 +1,16 @@
+{
+"packages": [
+	"brightnessctl",
+	"dunst",
+	"gammastep",
+	"grim",
+	"inotify-tools",
+	"kanshi",
+	"network-manager-applet",
+	"pavucontrol",
+	"rofi",
+	"slurp",
+	"wl-clipboard",
+	"wlr-randr"
+]
+}
