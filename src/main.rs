@@ -39,9 +39,6 @@ struct Args {
     )]
     config: String,
 
-    #[clap(long = "packagegroups", short = 'g', default_value = "none")]
-    package_groups: String,
-
     #[clap(long = "initiate", short = 'i', default_value = "no")]
     initiate: String,
 }
@@ -602,7 +599,7 @@ fn create_cmd_thread(command: Vec<String>, print: bool) {
     }
 }
 
-fn collect_package_lists(configs: &Config, _args: Args) -> (Vec<String>, Vec<String>) {
+fn collect_package_lists(configs: &Config) -> (Vec<String>, Vec<String>) {
     //! returns lists for the packages to be removed or installed
 
     // get list of explicitely installed packages
@@ -703,7 +700,6 @@ fn collect_settings(file_path: &str) -> (Vec<String>, Vec<String>) {
                 .iter()
                 .map(|s| s.to_string().replace("\"", ""))
                 .collect();
-            println!("{:?}", packages);
         }
         if entry.0 == "overlays" {
             overlays = entry
@@ -765,6 +761,8 @@ fn main() {
 
     // get snapshot date
     let date: Vec<String>;
+
+    let original_snapshot = configs.snapshot.clone();
 
     // if a snapshot was defined in the arguments, replace the one from the config file
     if args.snapshot == "none" {
@@ -979,7 +977,7 @@ fn main() {
             false,
         );
 
-        let (packages_to_remove, packages_to_install) = collect_package_lists(&configs, args);
+        let (packages_to_remove, packages_to_install) = collect_package_lists(&configs);
 
         // only perform if packages have to be removed
         if packages_to_remove.len() > 0 {
@@ -1047,8 +1045,14 @@ fn main() {
     // remove old and orphaned packages, check for failed daemons
     cleanup_system();
 
+    
+    // update config file with the date that was given as snapshot
+    if args.snapshot != "none" {
+        let _ = modify_file(&resolve_home(args.config), &format!("snapshot = \"{}\"",original_snapshot), &format!("snapshot = \"{}\"", args.snapshot), &configs.build_dir, true, false);
+    }
+
     // rebuild grub in case there was a breaking change
-    println!("\nReinstall grub and generate grub.cfg? Should be done if grub update had breaking changes (y/N)");
+    println!("\n\nReinstall grub and generate grub.cfg? Should be done if grub update had breaking changes (y/N)");
 
     let mut execute_grub_rebuild = String::new();
     stdin()
@@ -1058,7 +1062,7 @@ fn main() {
     match execute_grub_rebuild.to_lowercase().trim() {
         "y" => {
             // rebuilding grub (reinstall and generate)
-            println!("\nRebuilding grub.");
+            println!("\n\nRebuilding grub.");
             rebuild_grub();
         }
         _ => {
