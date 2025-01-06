@@ -1,3 +1,4 @@
 target/debug/*
 target/release/*
 !target/release/nompac_rs
+repository/tuxedo-control-center*
