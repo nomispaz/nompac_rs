@@ -6,13 +6,13 @@ use glob::glob;
 use regex::Regex;
 use reqwest;
 use serde::{Deserialize, Serialize};
-use serde_json::{self, Value};
 use std::collections::HashMap;
 use std::fs::{copy, read_to_string, write, File};
-use std::io::{BufRead, BufReader, Write, stdin};
+use std::io::{stdin, BufRead, BufReader, Write};
 use std::path::Path;
 use std::process::{Command, Output, Stdio};
 use tar::Archive;
+use toml::{self, Table};
 use walkdir::WalkDir;
 //async
 use std::sync::mpsc::{self, Sender};
@@ -35,7 +35,7 @@ struct Args {
     #[clap(
         long = "config",
         short = 'c',
-        default_value = "~/.config/nompac/configs/config.json"
+        default_value = "~/.config/nompac/configs/config.toml"
     )]
     config: String,
 
@@ -414,10 +414,10 @@ fn modify_file(
 }
 
 fn load_config_from_file(file_path: &str, args: &Args) -> Config {
-    //! takes the path to the config file, parses the json files and returns a config struct
-    let content = read_to_string(file_path).expect("Failed to read JSON configfile");
+    //! takes the path to the config file, parses the toml files and returns a config struct
+    let content = read_to_string(file_path).expect("Failed to read TOML configfile");
     let mut configs: Config =
-        serde_json::from_str(&content).expect("Errors in the JSON-structure of the configfile");
+        toml::from_str(&content).expect("Errors in the TOML-structure of the configfile");
 
     // use pacconfig from args if available
     if args.pacconfig != "none" {
@@ -664,7 +664,7 @@ fn perform_config_changes(configs: &Config) {
             // extract orig and changed value
             let orig_value = &config_entry.orig;
             let changed_value = &config_entry.changed;
-        
+
             let _ = modify_file(
                 &file_path_resolved,
                 orig_value,
@@ -680,45 +680,42 @@ fn perform_config_changes(configs: &Config) {
 fn collect_settings(file_path: &str) -> (Vec<String>, Vec<String>) {
     //! collect the packages and overlays defined in the given file and return them
 
-    // first read the contents of the file into a json value (at this point it is not known, what fields exist in the json file)
+    // first read the contents of the file into a toml value (at this point it is not known, what fields exist in the toml file)
 
     // Read the file contents into a string
     let contents =
         read_to_string(file_path).expect(&format!("Couldn't read config file: {}", file_path));
 
-    // Parse the string into a `serde_json::Value`
-    let json_value: Value = serde_json::from_str(&contents)
-        .expect(&format!("Couldn't parse config file {}", file_path));
+    // Parse the string into a `serde::Value`
+    let toml_table: Table =
+        toml::from_str(&contents).expect(&format!("Couldn't parse config file {}", file_path));
 
     let mut packages: Vec<String> = vec![];
     let mut overlays: Vec<String> = vec![];
 
     // collect the packages
-    if let Some(config) = json_value.as_object() {
-        for (key, values) in config {
-            if key == "packages" {
-                packages = values
-                    .as_array()
-                    .unwrap()
-                    .iter()
-                    .map(|s| s.to_string().replace("\"", ""))
-                    .collect();
-            }
+    for entry in toml_table {
+        if entry.0 == "packages" {
+            packages = entry
+                .1
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|s| s.to_string().replace("\"", ""))
+                .collect();
+            println!("{:?}", packages);
+        }
+        if entry.0 == "overlays" {
+            overlays = entry
+                .1
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|s| s.to_string().replace("\"", ""))
+                .collect();
         }
     }
-    // collect the overlays
-    if let Some(config) = json_value.as_object() {
-        for (key, values) in config {
-            if key == "overlays" {
-                overlays = values
-                    .as_array()
-                    .unwrap()
-                    .iter()
-                    .map(|s| s.to_string().replace("\"", ""))
-                    .collect();
-            }
-        }
-    }
+
     (packages, overlays)
 }
 
@@ -900,43 +897,64 @@ fn main() {
             }
 
             if package_version_installed.trim() != package_version_overlay.trim() {
-                // copy necessary files from overlay to build directory
-                for entry in WalkDir::new(&format!("{}/{}", &configs.overlay_dir, package))
-                    .into_iter()
-                    .filter_map(|entry| entry.ok())
-                {
-                    if entry.path().is_file() {
-                        let _ = std::fs::create_dir_all(format!(
-                            "{}/src/{}/",
-                            configs.build_dir, package
-                        ));
-                        let _ = copy(
-                            entry.path(),
-                            format!(
-                                "{}/src/{}/{}",
-                                configs.build_dir,
-                                package,
-                                entry.file_name().to_str().unwrap()
-                            ),
-                        );
-                        println!("{}/src/{}/", configs.build_dir, package);
+                // first check if the package was alread build and is available in the local repo
+                let package_version_from_repo: Vec<String> = String::from_utf8_lossy(
+                    &Command::new("bash")
+                        .arg("-c")
+                        .arg(format!(
+                            "pacman -Ss | grep \"\\<{}\\>\" | cut -d' ' -f 2",
+                            &package
+                        ))
+                        .output()
+                        .map_err(|e| eprintln!("Version of package couldn't be determined: {e}"))
+                        .unwrap()
+                        .stdout,
+                )
+                .split("\n")
+                .map(|s| s.to_string())
+                .collect();
+
+                if Some(package_version_from_repo) == None {
+                    // there is no package in the repository
+
+                    // copy necessary files from overlay to build directory
+                    for entry in WalkDir::new(&format!("{}/{}", &configs.overlay_dir, package))
+                        .into_iter()
+                        .filter_map(|entry| entry.ok())
+                    {
+                        if entry.path().is_file() {
+                            let _ = std::fs::create_dir_all(format!(
+                                "{}/src/{}/",
+                                configs.build_dir, package
+                            ));
+                            let _ = copy(
+                                entry.path(),
+                                format!(
+                                    "{}/src/{}/{}",
+                                    configs.build_dir,
+                                    package,
+                                    entry.file_name().to_str().unwrap()
+                                ),
+                            );
+                            println!("{}/src/{}/", configs.build_dir, package);
+                        }
                     }
+
+                    // build the package
+                    build_package(&format!("{}/src/{}/", configs.build_dir, package));
+
+                    let _ = update_repository(&configs, &configs.local_repo, &package);
+
+                    //create_cmd_thread(
+                    //    vec![format!(
+                    //        "sudo pacman -Sy {} --config {}",
+                    //        package, &configs.pacconfig
+                    //    )],
+                    //    true,
+                    //);
+
+                    cleanup(&configs);
                 }
-
-                // build the package
-                build_package(&format!("{}/src/{}/", configs.build_dir, package));
-
-                let _ = update_repository(&configs, &configs.local_repo, &package);
-
-                //create_cmd_thread(
-                //    vec![format!(
-                //        "sudo pacman -Sy {} --config {}",
-                //        package, &configs.pacconfig
-                //    )],
-                //    true,
-                //);
-
-                cleanup(&configs);
             } else {
                 println!(
                     "{}",
@@ -1033,7 +1051,9 @@ fn main() {
     println!("\nReinstall grub and generate grub.cfg? Should be done if grub update had breaking changes (y/N)");
 
     let mut execute_grub_rebuild = String::new();
-    stdin().read_line(&mut execute_grub_rebuild).expect("Failed to read line");
+    stdin()
+        .read_line(&mut execute_grub_rebuild)
+        .expect("Failed to read line");
 
     match execute_grub_rebuild.to_lowercase().trim() {
         "y" => {
