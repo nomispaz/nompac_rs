@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{self, Value};
 use std::collections::HashMap;
 use std::fs::{copy, read_to_string, write, File};
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Write, stdin};
 use std::path::Path;
 use std::process::{Command, Output, Stdio};
 use tar::Archive;
@@ -69,10 +69,37 @@ struct SystemConfigs {
     config_entry: Vec<ConfigEntry>,
 }
 
+impl IntoIterator for SystemConfigs {
+    type Item = ConfigEntry;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.config_entry.into_iter()
+    }
+}
+
+impl Clone for SystemConfigs {
+    fn clone(&self) -> Self {
+        SystemConfigs {
+            path: self.path.clone(),
+            config_entry: self.config_entry.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 struct ConfigEntry {
     orig: String,
     changed: String,
+}
+
+impl Clone for ConfigEntry {
+    fn clone(&self) -> Self {
+        ConfigEntry {
+            orig: self.orig.clone(),
+            changed: self.changed.clone(),
+        }
+    }
 }
 
 fn get_current_version_from_repo(package_name: &str) -> Result<String, Box<dyn std::error::Error>> {
@@ -556,7 +583,7 @@ fn create_cmd_thread(command: Vec<String>, print: bool) {
     // Spawn a thread to run the Bash command asynchronously
     // clone of command necessary to print it on error
     let command_result = thread::spawn(move || match run_command(tx, command.clone()) {
-        Ok(_) => print!(""),
+        Ok(_) => print!("Successfully ran command {}", command.join("; ")),
         Err(e) => eprintln!("Failed to run command {}: {:?}", command.join("; "), e),
     });
 
@@ -570,7 +597,7 @@ fn create_cmd_thread(command: Vec<String>, print: bool) {
 
     // make sure, that the thread is finished before continuing
     match command_result.join() {
-        Ok(_) => println!("Main thread: The spawned thread has completed."),
+        Ok(_) => println!(""),
         Err(e) => eprintln!("Main thread: Failed to join thread: {:?}", e),
     }
 }
@@ -624,7 +651,7 @@ fn collect_package_lists(configs: &Config, _args: Args) -> (Vec<String>, Vec<Str
 
 fn perform_config_changes(configs: &Config) {
     // loop through all defined changes for config-files
-    for entry in &configs.configs {
+    for entry in configs.configs.clone() {
         let file_path_resolved = resolve_home(entry.path.clone());
 
         // check if the file exists
@@ -633,18 +660,20 @@ fn perform_config_changes(configs: &Config) {
             println!("File {file_path_resolved} created.");
         }
 
-        // extract orig and changed value
-        let orig_value = &entry.config_entry.get(0).unwrap().orig;
-        let changed_value = &entry.config_entry.get(0).unwrap().changed;
-
-        let _ = modify_file(
-            &file_path_resolved,
-            orig_value,
-            changed_value,
-            &configs.build_dir,
-            true,
-            true,
-        );
+        for config_entry in entry.clone() {
+            // extract orig and changed value
+            let orig_value = &config_entry.orig;
+            let changed_value = &config_entry.changed;
+        
+            let _ = modify_file(
+                &file_path_resolved,
+                orig_value,
+                changed_value,
+                &configs.build_dir,
+                true,
+                true,
+            );
+        }
     }
 }
 
@@ -691,6 +720,26 @@ fn collect_settings(file_path: &str) -> (Vec<String>, Vec<String>) {
         }
     }
     (packages, overlays)
+}
+
+fn cleanup_system() {
+    let mut command: Vec<String> = vec![];
+    // show failed daemons
+    command.push("systemctl --failed".to_string());
+    command.push("echo \"Search and remove orphaned packages\"".to_string());
+    command.push("sudo pacman -Qdtq | sudo pacman -Rns -".to_string());
+    command.push("echo \"cleanup the package cache (keep the last version)\"".to_string());
+    command.push("sudo paccache -rk1".to_string());
+    command.push("echo \"remove all uninstaled packages from the package cache\"".to_string());
+    command.push("sudo paccache -ruk0".to_string());
+    create_cmd_thread(command, true);
+}
+
+fn rebuild_grub() {
+    let mut command: Vec<String> = vec![];
+    command.push("sudo grub-install --target=x86_64-efi --efi-directory=/boot/efi".to_string());
+    command.push("sudo grub-mkconfig -o /boot/grub/grub.cfg".to_string());
+    create_cmd_thread(command, true);
 }
 
 fn main() {
@@ -975,5 +1024,25 @@ fn main() {
     if !configs.configs.is_empty() {
         // TODO
         perform_config_changes(&configs);
+    }
+
+    // remove old and orphaned packages, check for failed daemons
+    cleanup_system();
+
+    // rebuild grub in case there was a breaking change
+    println!("\nReinstall grub and generate grub.cfg? Should be done if grub update had breaking changes (y/N)");
+
+    let mut execute_grub_rebuild = String::new();
+    stdin().read_line(&mut execute_grub_rebuild).expect("Failed to read line");
+
+    match execute_grub_rebuild.to_lowercase().trim() {
+        "y" => {
+            // rebuilding grub (reinstall and generate)
+            println!("\nRebuilding grub.");
+            rebuild_grub();
+        }
+        _ => {
+            println!("");
+        }
     }
 }
