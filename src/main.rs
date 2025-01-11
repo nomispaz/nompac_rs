@@ -14,6 +14,7 @@ use std::process::{Command, Output, Stdio};
 use tar::Archive;
 use toml::{self, Table};
 use walkdir::WalkDir;
+
 //async
 use std::sync::mpsc::{self, Sender};
 use std::thread;
@@ -63,6 +64,7 @@ struct Config {
 #[derive(Debug, Deserialize, Serialize)]
 struct SystemConfigs {
     path: String,
+    sudo: bool,
     config_entry: Vec<ConfigEntry>,
 }
 
@@ -79,6 +81,7 @@ impl Clone for SystemConfigs {
     fn clone(&self) -> Self {
         SystemConfigs {
             path: self.path.clone(),
+            sudo: self.sudo.clone(),
             config_entry: self.config_entry.clone(),
         }
     }
@@ -86,15 +89,13 @@ impl Clone for SystemConfigs {
 
 #[derive(Debug, Deserialize, Serialize)]
 struct ConfigEntry {
-    orig: String,
-    changed: String,
+    extra_config: String,
 }
 
 impl Clone for ConfigEntry {
     fn clone(&self) -> Self {
         ConfigEntry {
-            orig: self.orig.clone(),
-            changed: self.changed.clone(),
+            extra_config: self.extra_config.clone(),
         }
     }
 }
@@ -410,6 +411,231 @@ fn modify_file(
     Ok(())
 }
 
+fn evaluate_extra_configs(
+    filename: &str,
+    extra_config: &str,
+    build_dir: &str,
+    sudo: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    // initialize file contents
+    let mut content: String = "".to_string();
+    let mut modified_content = "".to_string();
+
+    // if the file needs to be opened with sudo, it needs to be read with cat in linux
+    if !sudo {
+        content = read_to_string(filename)?;
+    } else {
+        let output = Command::new("sudo")
+            .arg("cat")
+            .arg(filename)
+            .output()
+            .expect("Failed to execute sudo command");
+
+        if output.status.success() {
+            content = String::from_utf8_lossy(&output.stdout)
+                .trim_end()
+                .to_string();
+        } else {
+            let error_message = String::from_utf8_lossy(&output.stderr);
+            eprintln!("Error reading file: {}", error_message);
+        }
+    }
+
+    // create a vector of all lines of the new configs and of the file contents
+    let content_lines: Vec<String> = content.split("\n").map(|s| s.to_string()).collect();
+    let mut config_lines: Vec<String> = extra_config.split("\n").map(|s| s.to_string()).collect();
+
+    // remove last element since this will always be empty
+    config_lines.pop();
+
+    let mut config_block = false;
+
+    for line in content_lines {
+        // check if there are stll entrys in the extra configs to be added to the file
+        match config_lines.get(0) {
+            // no config lines need to be added any more
+            None => {
+                // add the original line
+                modified_content.push_str(&format!("{}\n", line));
+            }
+            // some config lines still need to be added
+            _ => {
+                // the current line of the file equals the current config line
+                match config_block {
+                    false => {
+                        if config_lines.get(0).unwrap().trim() == line.trim() {
+                            // we are in the config block
+                            config_block = true;
+                            // remove the current config line since it was printed
+                            config_lines.remove(0);
+                        }
+                        modified_content.push_str(&format!("{}\n", line));
+                    }
+                    true => {
+                        if config_lines.get(0).unwrap().trim() == line.trim() {
+                            modified_content.push_str(&format!("{}\n", line));
+                            // remove the current config line since it was printed
+                            config_lines.remove(0);
+                        } else {
+                            // we are in the config block and the current config line didn't exist
+                            // in the file before
+                            for config_line in config_lines.clone() {
+                                // add the config line
+                                modified_content.push_str(&format!("{}\n", config_line));
+                                config_lines.remove(0);
+                            }
+                            config_block = false;
+                            // print the current line of the file after the config block
+                            modified_content.push_str(&format!("{}\n", line));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // if the config block was never found, append it at the end of the file
+    // if the config block was evaluated before, config_lines is empty
+    for config_line in config_lines {
+        modified_content.push_str(&format!("{}\n", config_line));
+    }
+
+    // remove last element since it is empty
+    modified_content.pop();
+
+    // only write file if it was changed
+    if content != modified_content {
+        let tmp_file_split: Vec<&str> = filename.rsplitn(2, "/").collect();
+        let tmp_file = format!("{}/{}", build_dir, tmp_file_split.get(0).unwrap());
+        let _ = File::create(&tmp_file);
+        let _ = write(&tmp_file, modified_content);
+
+        if !sudo {
+            create_cmd_thread(vec![format!("cp {tmp_file} {filename}")], true);
+        } else {
+            create_cmd_thread(vec![format!("sudo cp {tmp_file} {filename}")], true);
+        }
+    }
+
+    Ok(())
+}
+
+fn evaluate_config_changes(filename: &str, extra_config: &str, build_dir: &str, sudo: bool) -> Result<(), Box<dyn std::error::Error>> {
+//! writes the desired config in a temporary file and afterwards runs nvim -d to diff the desired
+//! config with the existing config file
+//! only runs nvim -d if the desired config does not already exist in the config file
+
+    // first check if the config alread exists in the destination
+    // initialize file contents
+    let mut content: String = "".to_string();
+
+    // if the file needs to be opened with sudo, it needs to be read with cat in linux
+    if !sudo {
+        content = read_to_string(filename)?;
+    } else {
+        let output = Command::new("sudo")
+            .arg("cat")
+            .arg(filename)
+            .output()
+            .expect("Failed to execute sudo command");
+
+        if output.status.success() {
+            content = String::from_utf8_lossy(&output.stdout)
+                .trim_end()
+                .to_string();
+        } else {
+            let error_message = String::from_utf8_lossy(&output.stderr);
+            eprintln!("Error reading file: {}", error_message);
+        }
+    }
+
+    // create a vector of all lines of the new configs and of the file contents
+    let content_lines: Vec<String> = content.split("\n").map(|s| s.to_string()).collect();
+    let mut config_lines: Vec<String> = extra_config.split("\n").map(|s| s.to_string()).collect();
+
+    // remove last element since this will always be empty
+    config_lines.pop();
+
+    let mut config_block = false;
+    let mut config_block_done = false;
+
+    for line in content_lines {
+        // check if there are stll entrys in the extra configs to be added to the file
+        match config_lines.get(0) {
+            // all config lines were found in the block
+            None => {
+                config_block_done = true;
+            }
+            // some config lines still remain to be checked
+            _ => {
+                match config_block {
+                    false => {
+                        if config_lines.get(0).unwrap().trim() == line.trim() {
+                            // we are in the config block
+                            config_block = true;
+                            // remove the current config line since it was successfully checked
+                            config_lines.remove(0);
+                            match config_lines.get(0) {
+                                None => {
+                                    config_block_done = true;
+                                    break;
+                                },
+                                _ => continue,
+                            }
+                        }
+                    }
+                    true => {
+                        // we are in the config block
+                        if config_lines.get(0).unwrap().trim() == line.trim() {
+                            // remove the current config line since it was found in the file
+                            config_lines.remove(0);
+                            
+                            match config_lines.get(0) {
+                                None => {
+                                    config_block_done = true;
+                                    break;
+                                },
+                                _ => continue,
+                            }
+
+                        } else {
+                            // the current line is not equal to the next line in the config --> we
+                            // left the config block
+                            config_block = false;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if !config_block_done {
+        // not all config lines were found --> run nvim -d to diff the desired config with the
+        // current config.
+
+        // save the config change to a new file in the temporary build-directory
+        let tmp_file_split: Vec<&str> = filename.rsplitn(2, "/").collect();
+        let tmp_file = format!("{}/{}", build_dir, tmp_file_split.get(0).unwrap());
+        let _ = File::create(&tmp_file);
+        let _ = write(&tmp_file, extra_config);
+
+        // run the nvim -d process.
+        if !sudo {
+            let _ = Command::new("bash")
+                    .arg("-c")
+                    .arg(format!("nvim -d {tmp_file} {filename}"))
+                    .status();
+        } else {
+            let _ = Command::new("bash")
+                    .arg("-c")
+                    .arg(format!("sudo nvim -d {tmp_file} {filename}"))
+                    .status();
+        }
+    }
+
+    Ok(())
+}
+
 fn load_config_from_file(file_path: &str, args: &Args) -> Config {
     //! takes the path to the config file, parses the toml files and returns a config struct
     let content = read_to_string(file_path).expect("Failed to read TOML configfile");
@@ -648,34 +874,37 @@ fn collect_package_lists(configs: &Config) -> (Vec<String>, Vec<String>) {
 
 fn perform_config_changes(configs: &Config) {
     // loop through all defined changes for config-files
+
+    println!("{}", "\nUpdating config-files".blue());
+
     for entry in configs.configs.clone() {
         let file_path_resolved = resolve_home(entry.path.clone());
 
         // check if the file exists
         if !Path::new(&file_path_resolved).exists() {
-            let _ = File::create(&file_path_resolved);
+            if !entry.sudo {
+                let _ = File::create(&file_path_resolved);
+            } else {
+                let (path, _) = file_path_resolved.rsplit_once("/").unwrap();
+                let _ = create_cmd_thread(vec![format!("sudo mkdir {path}")], true);
+                let _ = create_cmd_thread(vec![format!("sudo touch {}", &entry.path)], true);
+            }
             println!("File {file_path_resolved} created.");
         }
 
         for config_entry in entry.clone() {
-            // extract orig and changed value
-            let orig_value = &config_entry.orig;
-            let changed_value = &config_entry.changed;
-
-            let _ = modify_file(
+            let _ = evaluate_config_changes(
                 &file_path_resolved,
-                orig_value,
-                changed_value,
+                &config_entry.extra_config,
                 &configs.build_dir,
-                true,
                 true,
             );
         }
     }
 }
 
-fn collect_settings(file_path: &str) -> (Vec<String>, Vec<String>) {
-    //! collect the packages and overlays defined in the given file and return them
+fn collect_settings(file_path: &str) -> (Vec<String>, Vec<String>, Vec<SystemConfigs>, Vec<HashMap<String, Vec<String>>>) {
+    //! collect the packages, overlays and config-changes defined in the given file and return them
 
     // first read the contents of the file into a toml value (at this point it is not known, what fields exist in the toml file)
 
@@ -689,6 +918,8 @@ fn collect_settings(file_path: &str) -> (Vec<String>, Vec<String>) {
 
     let mut packages: Vec<String> = vec![];
     let mut overlays: Vec<String> = vec![];
+    let mut config_changes: Vec<SystemConfigs> = vec![];
+    let mut patches: Vec<HashMap<String, Vec<String>>> = vec![];
 
     // collect the packages
     for entry in toml_table {
@@ -710,9 +941,27 @@ fn collect_settings(file_path: &str) -> (Vec<String>, Vec<String>) {
                 .map(|s| s.to_string().replace("\"", ""))
                 .collect();
         }
+        if entry.0 == "configs" {
+            config_changes = entry
+                .1
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|value| value.clone().try_into::<SystemConfigs>().unwrap())
+                .collect();
+        }
+        if entry.0 == "patches" {
+            patches = entry
+                .1
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|value| value.clone().try_into::<HashMap<String, Vec<String>>>().unwrap())
+                .collect();
+        }
     }
 
-    (packages, overlays)
+    (packages, overlays, config_changes, patches)
 }
 
 fn cleanup_system() {
@@ -748,10 +997,12 @@ fn main() {
 
     // collect settings from imported config-files defined in the original config file
     for file_name in configs.imports.clone() {
-        let additional_settings: (Vec<String>, Vec<String>) =
+        let additional_settings: (Vec<String>, Vec<String>, Vec<SystemConfigs>, Vec<HashMap<String, Vec<String>>>) =
             collect_settings(&resolve_home(file_name));
         configs.packages.extend(additional_settings.0);
         configs.overlays.extend(additional_settings.1);
+        configs.configs.extend(additional_settings.2);
+        configs.patches.extend(additional_settings.3);
     }
 
     // initiate pacman.conf if required
@@ -1045,10 +1296,16 @@ fn main() {
     // remove old and orphaned packages, check for failed daemons
     cleanup_system();
 
-    
     // update config file with the date that was given as snapshot
     if args.snapshot != "none" {
-        let _ = modify_file(&resolve_home(args.config), &format!("snapshot = \"{}\"",original_snapshot), &format!("snapshot = \"{}\"", args.snapshot), &configs.build_dir, true, false);
+        let _ = modify_file(
+            &resolve_home(args.config),
+            &format!("snapshot = \"{}\"", original_snapshot),
+            &format!("snapshot = \"{}\"", args.snapshot),
+            &configs.build_dir,
+            true,
+            false,
+        );
     }
 
     // rebuild grub in case there was a breaking change

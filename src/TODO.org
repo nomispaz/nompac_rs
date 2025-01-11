@@ -1,3 +1,2 @@
-- [ ] Update paths
-  - [ ] pacconfig according to local repository from config-file
-  - [ ] 
+- change settings of pacman.conf via config-file
+- continue with 10_finish_installation.sh
