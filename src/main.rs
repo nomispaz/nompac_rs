@@ -520,10 +520,15 @@ fn evaluate_extra_configs(
     Ok(())
 }
 
-fn evaluate_config_changes(filename: &str, extra_config: &str, build_dir: &str, sudo: bool) -> Result<(), Box<dyn std::error::Error>> {
-//! writes the desired config in a temporary file and afterwards runs nvim -d to diff the desired
-//! config with the existing config file
-//! only runs nvim -d if the desired config does not already exist in the config file
+fn evaluate_config_changes(
+    filename: &str,
+    extra_config: &str,
+    build_dir: &str,
+    sudo: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    //! writes the desired config in a temporary file and afterwards runs nvim -d to diff the desired
+    //! config with the existing config file
+    //! only runs nvim -d if the desired config does not already exist in the config file
 
     // first check if the config alread exists in the destination
     // initialize file contents
@@ -579,7 +584,7 @@ fn evaluate_config_changes(filename: &str, extra_config: &str, build_dir: &str, 
                                 None => {
                                     config_block_done = true;
                                     break;
-                                },
+                                }
                                 _ => continue,
                             }
                         }
@@ -589,15 +594,14 @@ fn evaluate_config_changes(filename: &str, extra_config: &str, build_dir: &str, 
                         if config_lines.get(0).unwrap().trim() == line.trim() {
                             // remove the current config line since it was found in the file
                             config_lines.remove(0);
-                            
+
                             match config_lines.get(0) {
                                 None => {
                                     config_block_done = true;
                                     break;
-                                },
+                                }
                                 _ => continue,
                             }
-
                         } else {
                             // the current line is not equal to the next line in the config --> we
                             // left the config block
@@ -622,14 +626,14 @@ fn evaluate_config_changes(filename: &str, extra_config: &str, build_dir: &str, 
         // run the nvim -d process.
         if !sudo {
             let _ = Command::new("bash")
-                    .arg("-c")
-                    .arg(format!("nvim -d {tmp_file} {filename}"))
-                    .status();
+                .arg("-c")
+                .arg(format!("nvim -d {tmp_file} {filename}"))
+                .status();
         } else {
             let _ = Command::new("bash")
-                    .arg("-c")
-                    .arg(format!("sudo nvim -d {tmp_file} {filename}"))
-                    .status();
+                .arg("-c")
+                .arg(format!("sudo nvim -d {tmp_file} {filename}"))
+                .status();
         }
     }
 
@@ -903,7 +907,14 @@ fn perform_config_changes(configs: &Config) {
     }
 }
 
-fn collect_settings(file_path: &str) -> (Vec<String>, Vec<String>, Vec<SystemConfigs>, Vec<HashMap<String, Vec<String>>>) {
+fn collect_settings(
+    file_path: &str,
+) -> (
+    Vec<String>,
+    Vec<String>,
+    Vec<SystemConfigs>,
+    Vec<HashMap<String, Vec<String>>>,
+) {
     //! collect the packages, overlays and config-changes defined in the given file and return them
 
     // first read the contents of the file into a toml value (at this point it is not known, what fields exist in the toml file)
@@ -956,7 +967,12 @@ fn collect_settings(file_path: &str) -> (Vec<String>, Vec<String>, Vec<SystemCon
                 .as_array()
                 .unwrap()
                 .iter()
-                .map(|value| value.clone().try_into::<HashMap<String, Vec<String>>>().unwrap())
+                .map(|value| {
+                    value
+                        .clone()
+                        .try_into::<HashMap<String, Vec<String>>>()
+                        .unwrap()
+                })
                 .collect();
         }
     }
@@ -997,8 +1013,12 @@ fn main() {
 
     // collect settings from imported config-files defined in the original config file
     for file_name in configs.imports.clone() {
-        let additional_settings: (Vec<String>, Vec<String>, Vec<SystemConfigs>, Vec<HashMap<String, Vec<String>>>) =
-            collect_settings(&resolve_home(file_name));
+        let additional_settings: (
+            Vec<String>,
+            Vec<String>,
+            Vec<SystemConfigs>,
+            Vec<HashMap<String, Vec<String>>>,
+        ) = collect_settings(&resolve_home(file_name));
         configs.packages.extend(additional_settings.0);
         configs.overlays.extend(additional_settings.1);
         configs.configs.extend(additional_settings.2);
