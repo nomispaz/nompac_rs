@@ -1,0 +1,17 @@
+pkgname=cpupower_go
+
+pkgver=0.1
+pkgrel=1
+pkgdesc="Emacs annalist package. Requirement for evil-collection"
+license=("GPL3")
+arch=('x86_64')
+depends=(
+    cpupower
+)
+source=($pkgname.tar.gz::https://github.com/nomispaz/$pkgname/archive/refs/tags/$pkgver.tar.gz)
+
+package() {
+  cd $pkgname-$pkgver
+  install -Dm755 cpupower_go "$pkgdir"/usr/bin/$pkgname
+}
+sha256sums=('f67302221746c9fff032a9b607db3057de818c069aa67671e2b234d5927e6691')
