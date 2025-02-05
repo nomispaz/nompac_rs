@@ -1139,7 +1139,7 @@ fn main() {
 
         for package in &configs.overlays {
             let mut package_version_overlay: String = String::new();
-            let mut package_version_installed: String = String::new();
+            let mut package_version_installed: String = "0".to_string();
 
             match get_installed_version(&package) {
                 Ok(version) => package_version_installed = version,
@@ -1183,7 +1183,7 @@ fn main() {
                 .map(|s| s.to_string())
                 .collect();
 
-                if Some(package_version_from_repo) == None {
+                if package_version_from_repo.get(0).unwrap() == "" {
                     // there is no package in the repository
 
                     // copy necessary files from overlay to build directory
