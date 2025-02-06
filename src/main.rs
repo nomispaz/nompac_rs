@@ -44,6 +44,7 @@ struct Args {
     initiate: String,
 }
 
+// struct to contain all config settings
 #[derive(Debug, Deserialize, Serialize)]
 struct Config {
     name: String,
@@ -61,6 +62,7 @@ struct Config {
     imports: Vec<String>,
 }
 
+// structs to contain required changed to config files
 #[derive(Debug, Deserialize, Serialize)]
 struct SystemConfigs {
     path: String,
@@ -1309,7 +1311,6 @@ fn main() {
     }
 
     if !configs.configs.is_empty() {
-        // TODO
         perform_config_changes(&configs);
     }
 
