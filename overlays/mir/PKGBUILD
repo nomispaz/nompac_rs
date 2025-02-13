@@ -1,0 +1,68 @@
+pkgname=mir
+pkgver=2.19.3
+pkgrel=2
+pkgdesc="Mir is set of libraries for building Wayland based shells. "
+arch=(x86_64)
+url="https://github.com/canonical/mir"
+license=(GPL-2.0 GPL-3.0 LGPL-3.0)
+depends=(
+  glibmm
+  libxml++2.6
+  yaml-cpp
+  boost-libs
+  glibc
+  glib2
+  libinput
+  egl-wayland
+  wayland
+  lttng-ust
+  freetype2
+  libepoxy
+  libglvnd
+  mesa
+  util-linux-libs
+  libxcursor
+  libdrm
+  libxcb
+  libxkbcommon-x11
+  libx11
+  libevdev
+	)
+makedepends=(
+  glm
+  glib2-devel
+  gtest
+  umockdev
+  xorg-xwayland
+  cmake
+  boost
+  doxygen
+  graphviz
+  glmark2
+  python-pillow
+  python-dbus
+  python-dbusmock
+)
+
+source=("${pkgname}-${pkgver}.tar.gz::${url}/archive/refs/tags/v${pkgver}.tar.gz")
+
+build() {
+   cd ${pkgname}-${pkgver}
+   cmake -B build -Wno-dev \
+    -Dglm_DIR:PATH=/usr/lib/cmake/glm/ \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DMIR_ENABLE_WLCS_TESTS=OFF \
+    -DMIR_ENABLE_TESTS=OFF \
+    -DMIR_BUILD_PERFORMANCE_TESTS=OFF \
+    -DMIR_BUILD_PLATFORM_TEST_HARNESS=OFF \
+    -DMIR_BUILD_UNIT_TESTS=OFF
+
+    cmake --build build
+}
+
+package() {
+    cd ${pkgname}-${pkgver}
+    DESTDIR="${pkgdir}" cmake --install build
+}
+
+sha256sums=('7a185f0e8fe21972f3219ec32d0db6141419093d50f245647e7d6b822250da2d')

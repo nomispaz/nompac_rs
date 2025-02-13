@@ -138,6 +138,14 @@ fn get_version_from_pkgbuild(file_contents: &str) -> Result<String, Box<dyn std:
             pkgver_row.append(&mut line.split("=").collect());
         }
     }
+
+    if pkgver_row.is_empty() {
+        pkgver_row.push("pkgver");
+        pkgver_row.push("0");
+        pkgver_row.push("pkgrel");
+        pkgver_row.push("0");
+    }
+
     Ok(format!(
         "{}-{}",
         pkgver_row[1].to_string(),
@@ -1091,7 +1099,9 @@ fn main() {
             }
 
             //only procede if the package was updated upstream
-            if package_version_installed.trim() != package_version_repo.trim() {
+            if package_version_installed.trim() != package_version_repo.trim()
+                && package_version_repo.trim() != "0-0"
+            {
                 let _ = get_current_tarball_from_repo(
                     &package,
                     &package_version_repo,
@@ -1167,6 +1177,28 @@ fn main() {
                 ),
             }
 
+            // check if the package exists in the official repos and is newer
+            let mut package_version_repo: String = String::new();
+
+            match get_current_version_from_repo(&package) {
+                Ok(version) => package_version_repo = version,
+                Err(_e) => println!(
+                    "{}",
+                    format!(
+                        "Error while trying to fetch package version of {} from official repository. This doesn't happen since the package doesn't exist - this case should be handled.",
+                        package
+                    )
+                    .green()
+                ),
+            }
+
+            // only continue if a package version exists in the repos (i.e. version is 0-0)
+            if package_version_overlay.trim() != package_version_repo.trim()
+                && package_version_repo.trim() != "0-0"
+            {
+                println!("{}", format!("Package {} has different version in official repo --> consider updating the version or remove the package from the overlay.", package).blue());
+            }
+
             if package_version_installed.trim() != package_version_overlay.trim() {
                 // first check if the package was alread build and is available in the local repo
                 let package_version_from_repo: Vec<String> = String::from_utf8_lossy(
@@ -1185,7 +1217,7 @@ fn main() {
                 .map(|s| s.to_string())
                 .collect();
 
-                if package_version_from_repo.get(0).unwrap() == "" {
+                if package_version_from_repo.get(0).unwrap() == "" || package_version_from_repo.get(0).unwrap().trim() != package_version_overlay.trim() {
                     // there is no package in the repository
 
                     // copy necessary files from overlay to build directory

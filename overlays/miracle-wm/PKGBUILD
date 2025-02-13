@@ -1,0 +1,42 @@
+pkgname=miracle-wm
+pkgver=0.4.1
+pkgrel=1
+pkgdesc="Miracle is a Wayland tiling window manager built on Mir."
+arch=(x86_64)
+url="https://github.com/miracle-wm-org/miracle-wm"
+license=(GPL-3.0)
+depends=(
+  glib2
+  mir
+  yaml-cpp
+  libevdev
+  nlohmann-json
+  libnotify
+  libxkbcommon
+)
+makedepends=(
+  git
+  make
+  gcc
+  glm
+  boost
+)
+
+source=("${pkgname}-${pkgver}.tar.gz::${url}/archive/refs/tags/v${pkgver}.tar.gz")
+
+build() {
+   cd $pkgname-$pkgver
+
+   cmake -B build \
+	 -DSNAP_BUILD=OFF \
+	 -DCMAKE_INSTALL_PREFIX=/usr \
+         -DSYSTEMD_INTEGRATION=ON
+   cmake --build build
+}
+
+package() {
+    cd ${pkgname}-${pkgver}
+    DESTDIR="${pkgdir}" cmake --install build
+}
+
+sha256sums=('250bfe04f3f887f64bb7dfa98c9d6f56827ca628b68851424a20b5783ba13482')
