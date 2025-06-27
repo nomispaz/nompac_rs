@@ -7,8 +7,9 @@ use regex::Regex;
 use reqwest;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fs::{copy, read_to_string, write, File};
-use std::io::{stdin, BufRead, BufReader, Write};
+use std::fs::{File, copy, read_to_string, write};
+use std::io::{BufRead, BufReader, Write, stdin};
+use std::ops::Index;
 use std::path::Path;
 use std::process::{Command, Output, Stdio};
 use tar::Archive;
@@ -53,6 +54,7 @@ struct Config {
     overlay_dir: String,
     local_repo: String,
     packages: Vec<String>,
+    package_groups: Vec<String>,
     patches: Vec<HashMap<String, Vec<String>>>,
     overlays: Vec<String>,
     pacconfig: String,
@@ -859,6 +861,28 @@ fn collect_package_lists(configs: &Config) -> (Vec<String>, Vec<String>) {
     // remove last item from list since the split function returns one additional empty row
     package_list_installed.pop();
 
+    // add all packages to the list that were installed as part of a group
+    let mut package_list_grouped_installed: Vec<String> = String::from_utf8_lossy(
+        &Command::new("bash")
+            .arg("-c")
+            .arg("pacman -Sg gnome | cut -d ' ' -f 2")
+            .output()
+            .map_err(|e| eprintln!("List of installed packages via groups couldn't be collected: {e}"))
+            .unwrap()
+            .stdout,
+    )
+    .split("\n")
+    .map(|s| s.to_string())
+    .collect();
+    package_list_grouped_installed.pop();
+
+    let mut package_list_installed_cleared: Vec<String> = Vec::new();
+    for package in &package_list_installed {
+        if !package_list_grouped_installed.contains(package) {
+            package_list_installed_cleared.push(package.to_string()); 
+        }
+    }
+
     // create package list of packages that should be installed explicitely
     let mut package_list = configs.packages.clone();
     // sort list by package name
@@ -868,7 +892,7 @@ fn collect_package_lists(configs: &Config) -> (Vec<String>, Vec<String>) {
     // for this, iterate over list and remove the package already read from the vector
     let mut packages_to_remove: Vec<String> = Vec::new();
 
-    for package in &package_list_installed {
+    for package in &package_list_installed_cleared {
         if !package_list.contains(&package) {
             packages_to_remove.push(package.to_string());
         }
@@ -878,7 +902,7 @@ fn collect_package_lists(configs: &Config) -> (Vec<String>, Vec<String>) {
     let mut packages_to_install: Vec<String> = Vec::new();
 
     for package in package_list {
-        if !package_list_installed.contains(&package) {
+        if !package_list_installed_cleared.contains(&package) {
             packages_to_install.push(package);
         }
     }
@@ -1008,6 +1032,29 @@ fn rebuild_grub() {
     command.push("sudo grub-install --target=x86_64-efi --efi-directory=/boot/efi".to_string());
     command.push("sudo grub-mkconfig -o /boot/grub/grub.cfg".to_string());
     create_cmd_thread(command, true);
+}
+
+fn set_user_groups(configs: &Config) {
+    // get current user groups
+    let mut current_user_groups: Vec<String> = String::from_utf8_lossy(
+        &Command::new("bash")
+            .arg("-c")
+            .arg("groups simonheise")
+            .output()
+            .map_err(|e| eprintln!("List of groups of users couldn't be collected: {e}"))
+            .unwrap()
+            .stdout,
+    )
+    .split("\n")
+    .map(|s| s.to_string())
+    .collect();
+    // remove the last entry in the vector since it is always empty
+    current_user_groups.pop();
+    let mut current_user_groups_sorted: Vec<&str> =
+        current_user_groups.get(0).unwrap().split(" ").collect();
+    current_user_groups_sorted.sort();
+
+    println!("{:?}", current_user_groups_sorted);
 }
 
 fn main() {
@@ -1217,7 +1264,10 @@ fn main() {
                 .map(|s| s.to_string())
                 .collect();
 
-                if package_version_from_repo.get(0).unwrap() == "" || package_version_from_repo.get(0).unwrap().trim() != package_version_overlay.trim() {
+                if package_version_from_repo.get(0).unwrap() == ""
+                    || package_version_from_repo.get(0).unwrap().trim()
+                        != package_version_overlay.trim()
+                {
                     // there is no package in the repository
 
                     // copy necessary files from overlay to build directory
@@ -1362,7 +1412,9 @@ fn main() {
     }
 
     // rebuild grub in case there was a breaking change
-    println!("\n\nReinstall grub and generate grub.cfg? Should be done if grub update had breaking changes (y/N)");
+    println!(
+        "\n\nReinstall grub and generate grub.cfg? Should be done if grub update had breaking changes (y/N)"
+    );
 
     let mut execute_grub_rebuild = String::new();
     stdin()
@@ -1379,4 +1431,6 @@ fn main() {
             println!("");
         }
     }
+
+    set_user_groups(&configs);
 }
