@@ -1,0 +1,11 @@
+* TODO 
+- OSC Installation: https://software.opensuse.org//download.html?project=openSUSE%3ATools&package=osc
+- How to integrate the steps automatically and declaratively?
+key=$(curl -fsSL https://download.opensuse.org/repositories/openSUSE:Tools/Arch/$(uname -m)/openSUSE_Tools_Arch.key)
+fingerprint=$(gpg --quiet --with-colons --import-options show-only --import --fingerprint <<< "${key}" | awk -F: '$1 == "fpr" { print $10 }')
+
+pacman-key --init
+pacman-key --add - <<< "${key}"
+pacman-key --lsign-key "${fingerprint}"
+
+
